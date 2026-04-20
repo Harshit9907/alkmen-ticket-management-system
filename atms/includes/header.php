@@ -18,4 +18,3 @@ if (!isset($pageTitle)) {
     <link rel="stylesheet" href="/atms/assets/css/style.css">
 </head>
 <body>
-<div class="layout">

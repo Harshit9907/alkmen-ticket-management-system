@@ -1,13 +1,32 @@
 CREATE DATABASE IF NOT EXISTS atms CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE atms;
 
+CREATE TABLE IF NOT EXISTS roles (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(120) NOT NULL,
+    slug VARCHAR(120) NOT NULL UNIQUE,
+    is_protected TINYINT(1) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS users (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(120) NOT NULL,
     email VARCHAR(160) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
     role ENUM('admin', 'client') NOT NULL DEFAULT 'client',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    role_id INT UNSIGNED NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS role_permissions (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    role_id INT UNSIGNED NOT NULL,
+    permission_key VARCHAR(120) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_role_permission (role_id, permission_key),
+    CONSTRAINT fk_role_permissions_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS tickets (
@@ -36,36 +55,36 @@ CREATE TABLE IF NOT EXISTS messages (
     CONSTRAINT fk_messages_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-INSERT INTO users (name, email, password, role) VALUES
-('ATMS Admin', 'admin@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'admin'),
-('John Client', 'john.client@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'client'),
-('Maya Client', 'maya.client@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'client')
+INSERT INTO roles (name, slug, is_protected) VALUES
+('Administrator', 'admin', 1),
+('Client', 'client', 1)
+ON DUPLICATE KEY UPDATE name = VALUES(name), is_protected = VALUES(is_protected);
+
+INSERT IGNORE INTO role_permissions (role_id, permission_key)
+SELECT r.id, p.permission_key FROM roles r
+JOIN (
+    SELECT 'admin' AS slug, 'tickets.view_all' AS permission_key
+    UNION ALL SELECT 'admin', 'tickets.manage'
+    UNION ALL SELECT 'admin', 'roles.manage'
+    UNION ALL SELECT 'admin', 'users.manage'
+    UNION ALL SELECT 'client', 'tickets.raise'
+    UNION ALL SELECT 'client', 'tickets.view_own'
+) p ON p.slug = r.slug;
+
+INSERT INTO users (name, email, password, role, role_id)
+SELECT 'ATMS Admin', 'admin@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'admin', r.id
+FROM roles r
+WHERE r.slug = 'admin'
 ON DUPLICATE KEY UPDATE email = VALUES(email);
 
-INSERT INTO tickets (ticket_id, user_id, subject, description, category, priority, status, assigned_to, created_at)
-SELECT 'ALK-1001', u.id, 'Unable to login on mobile', 'Client cannot login from mobile app and gets session timeout.', 'Technical', 'high', 'open', a.id, NOW() - INTERVAL 2 DAY
-FROM users u CROSS JOIN users a
-WHERE u.email = 'john.client@alkmen.com' AND a.email = 'admin@alkmen.com'
-AND NOT EXISTS (SELECT 1 FROM tickets WHERE ticket_id = 'ALK-1001');
+INSERT INTO users (name, email, password, role, role_id)
+SELECT 'John Client', 'john.client@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'client', r.id
+FROM roles r
+WHERE r.slug = 'client'
+ON DUPLICATE KEY UPDATE email = VALUES(email);
 
-INSERT INTO tickets (ticket_id, user_id, subject, description, category, priority, status, assigned_to, created_at)
-SELECT 'ALK-1002', u.id, 'Invoice mismatch for March', 'Invoice amount does not match approved estimate.', 'Billing', 'medium', 'in_progress', a.id, NOW() - INTERVAL 1 DAY
-FROM users u CROSS JOIN users a
-WHERE u.email = 'maya.client@alkmen.com' AND a.email = 'admin@alkmen.com'
-AND NOT EXISTS (SELECT 1 FROM tickets WHERE ticket_id = 'ALK-1002');
-
-INSERT INTO messages (ticket_id, sender_id, message, file, created_at)
-SELECT t.id, u.id, 'I am unable to sign in from my phone since yesterday.', NULL, NOW() - INTERVAL 2 DAY
-FROM tickets t JOIN users u ON u.email = 'john.client@alkmen.com'
-WHERE t.ticket_id = 'ALK-1001'
-AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.ticket_id = t.id AND m.message = 'I am unable to sign in from my phone since yesterday.');
-
-INSERT INTO messages (ticket_id, sender_id, message, file, created_at)
-SELECT t.id, a.id, 'We are checking the mobile auth logs now.', NULL, NOW() - INTERVAL 1 DAY
-FROM tickets t JOIN users a ON a.email = 'admin@alkmen.com'
-WHERE t.ticket_id = 'ALK-1001'
-AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.ticket_id = t.id AND m.message = 'We are checking the mobile auth logs now.');
-INSERT INTO users (name, email, password, role)
-VALUES
-('System Admin', 'admin@atms.local', '$2y$12$b9kl4WosnmJnvr38PMpg/uwLqIxqyR4JRyvaTXi5SG6o5MaKDLsdy', 'admin')
+INSERT INTO users (name, email, password, role, role_id)
+SELECT 'Maya Client', 'maya.client@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'client', r.id
+FROM roles r
+WHERE r.slug = 'client'
 ON DUPLICATE KEY UPDATE email = VALUES(email);

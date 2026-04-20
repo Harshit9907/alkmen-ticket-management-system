@@ -11,7 +11,6 @@ $totalStmt = $pdo->prepare('SELECT COUNT(*) FROM tickets WHERE user_id = :user_i
 $totalStmt->execute(['user_id' => $userId]);
 $total = (int) $totalStmt->fetchColumn();
 
-$openStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE user_id = :user_id AND status IN ('open', 'in_progress')");
 $openStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE user_id = :user_id AND status = 'open'");
 $openStmt->execute(['user_id' => $userId]);
 $open = (int) $openStmt->fetchColumn();
@@ -33,6 +32,16 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <div class="card stat-card"><h3>Open Tickets</h3><p><?= $open ?></p></div>
     <div class="card stat-card"><h3>Resolved Tickets</h3><p><?= $resolved ?></p></div>
 </div>
+
+<?php if (hasPermission('roles.manage') || hasPermission('users.manage')): ?>
+<div class="card mt-16">
+    <div class="table-header">
+        <h2>Roles Management</h2>
+    </div>
+    <?php if (hasPermission('users.manage')): ?><a class="btn" href="/atms/client/users.php">Manage Users</a><?php endif; ?>
+    <?php if (hasPermission('roles.manage')): ?><a class="btn" href="/atms/client/roles.php">Manage Roles</a><?php endif; ?>
+</div>
+<?php endif; ?>
 
 <div class="card mt-16">
     <div class="table-header">
@@ -67,7 +76,5 @@ require_once __DIR__ . '/../includes/sidebar.php';
         <?php endif; ?>
         </tbody>
     </table>
-    <div class="card stat-card"><h3>Open</h3><p><?= $open ?></p></div>
-    <div class="card stat-card"><h3>Resolved</h3><p><?= $resolved ?></p></div>
 </div>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
