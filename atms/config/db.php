@@ -549,6 +549,65 @@ function uploadFile(array $file): ?string
     return $newName;
 }
 
+/**
+ * Scope strategy:
+ * - client: can access own tickets only
+ * - manager: can access tickets of mapped users in manager_client_map
+ * - admin/client_admin: can access all client tickets
+ */
+function getScopedClientIds(PDO $pdo, int $sessionUserId, string $sessionRole): array
+{
+    if ($sessionRole === 'client') {
+        return [$sessionUserId];
+    }
+
+    if (in_array($sessionRole, ['admin', 'client_admin'], true)) {
+        $stmt = $pdo->query("SELECT id FROM users WHERE role = 'client'");
+
+        return array_map('intval', array_column($stmt->fetchAll(), 'id'));
+    }
+
+    if ($sessionRole === 'manager') {
+        $stmt = $pdo->prepare('SELECT user_id FROM manager_client_map WHERE manager_id = :manager_id');
+        $stmt->execute(['manager_id' => $sessionUserId]);
+
+        return array_map('intval', array_column($stmt->fetchAll(), 'user_id'));
+    }
+
+    return [];
+}
+
+function buildTicketScopeFilter(PDO $pdo, int $sessionUserId, string $sessionRole, string $ticketUserField = 't.user_id'): array
+{
+    $clientIds = getScopedClientIds($pdo, $sessionUserId, $sessionRole);
+    if ($clientIds === []) {
+        return ['sql' => '1 = 0', 'params' => []];
+    }
+
+    $placeholders = [];
+    $params = [];
+    foreach ($clientIds as $i => $clientId) {
+        $key = 'scope_' . $i;
+        $placeholders[] = ':' . $key;
+        $params[$key] = $clientId;
+    }
+
+    return [
+        'sql' => sprintf('%s IN (%s)', $ticketUserField, implode(', ', $placeholders)),
+        'params' => $params,
+    ];
+}
+
+function canAccessTicket(PDO $pdo, int $ticketPk, int $sessionUserId, string $sessionRole): bool
+{
+    $scope = buildTicketScopeFilter($pdo, $sessionUserId, $sessionRole, 't.user_id');
+    $query = sprintf('SELECT 1 FROM tickets t WHERE t.id = :ticket_id AND %s LIMIT 1', $scope['sql']);
+    $params = array_merge(['ticket_id' => $ticketPk], $scope['params']);
+
+    $stmt = $pdo->prepare($query);
+    $stmt->execute($params);
+
+    return (bool) $stmt->fetchColumn();
 function logTicketEvent(PDO $pdo, int $ticketId, string $eventType, ?string $oldValue, ?string $newValue, int $actorId): void
 {
     $stmt = $pdo->prepare('INSERT INTO ticket_events (ticket_id, event_type, old_value, new_value, actor_id) VALUES (:ticket_id, :event_type, :old_value, :new_value, :actor_id)');

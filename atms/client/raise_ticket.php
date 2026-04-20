@@ -3,6 +3,23 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/auth_check.php';
+requireRole(['client', 'manager', 'admin', 'client_admin']);
+
+$sessionUserId = (int) $_SESSION['user_id'];
+$sessionRole = (string) $_SESSION['role'];
+$scopeClientIds = getScopedClientIds($pdo, $sessionUserId, $sessionRole);
+
+$errors = [];
+
+$clientOptions = [];
+if (in_array($sessionRole, ['manager', 'admin', 'client_admin'], true)) {
+    if ($scopeClientIds !== []) {
+        $holders = implode(', ', array_fill(0, count($scopeClientIds), '?'));
+        $clientStmt = $pdo->prepare("SELECT id, name, email FROM users WHERE id IN ({$holders}) ORDER BY name ASC");
+        $clientStmt->execute($scopeClientIds);
+        $clientOptions = $clientStmt->fetchAll();
+    }
+}
 requireRole(['client', 'client_plus', 'client_support']);
 
 $errors = [];
@@ -18,6 +35,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $description = trim($_POST['description'] ?? '');
     $category = trim($_POST['category'] ?? 'General');
     $priority = in_array($_POST['priority'] ?? '', ['low', 'medium', 'high'], true) ? $_POST['priority'] : 'low';
+
+    $targetUserId = $sessionRole === 'client' ? $sessionUserId : (int) ($_POST['user_id'] ?? 0);
+    if (!in_array($targetUserId, $scopeClientIds, true)) {
+        $errors[] = 'You are not allowed to raise tickets for this user.';
+    }
 
     if ($subject === '' || strlen($subject) < 3) {
         $errors[] = 'Subject must be at least 3 characters.';
@@ -45,6 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ticketStmt = $pdo->prepare('INSERT INTO tickets (ticket_id, user_id, subject, description, category, priority, status) VALUES (:ticket_id, :user_id, :subject, :description, :category, :priority, :status)');
         $ticketStmt->execute([
             'ticket_id' => $ticketId,
+            'user_id' => $targetUserId,
             'user_id' => currentUserId(),
             'subject' => $subject,
             'description' => $description,
@@ -57,6 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $initialMsg = $pdo->prepare('INSERT INTO messages (ticket_id, sender_id, message, file) VALUES (:ticket_id, :sender_id, :message, :file)');
         $initialMsg->execute([
             'ticket_id' => $ticketPk,
+            'sender_id' => $sessionUserId,
             'sender_id' => currentUserId(),
             'message' => 'Ticket created: ' . $description,
             'file' => $uploadName,
@@ -75,6 +99,17 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <?php foreach ($errors as $error): ?><p class="alert-error"><?= e($error) ?></p><?php endforeach; ?>
 
     <form method="POST" enctype="multipart/form-data">
+        <?php if (in_array($sessionRole, ['manager', 'admin', 'client_admin'], true)): ?>
+            <label>Client User</label>
+            <select name="user_id" required>
+                <option value="">Select client</option>
+                <?php foreach ($clientOptions as $client): ?>
+                    <option value="<?= (int) $client['id'] ?>" <?= (int) ($_POST['user_id'] ?? 0) === (int) $client['id'] ? 'selected' : '' ?>>
+                        <?= e($client['name']) ?> (<?= e($client['email']) ?>)
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        <?php endif; ?>
         <label>Subject</label>
         <input type="text" name="subject" value="<?= e($_POST['subject'] ?? '') ?>" required>
 
@@ -102,6 +137,9 @@ require_once __DIR__ . '/../includes/sidebar.php';
 
         <label>Priority</label>
         <select name="priority" required>
+            <option value="low" <?= ($_POST['priority'] ?? 'low') === 'low' ? 'selected' : '' ?>>Low</option>
+            <option value="medium" <?= ($_POST['priority'] ?? '') === 'medium' ? 'selected' : '' ?>>Medium</option>
+            <option value="high" <?= ($_POST['priority'] ?? '') === 'high' ? 'selected' : '' ?>>High</option>
             <option value="low" <?= ($_POST['priority'] ?? '') === 'low' ? 'selected' : '' ?>>Low</option>
             <option value="medium" <?= ($_POST['priority'] ?? '') === 'medium' ? 'selected' : '' ?>>Medium</option>
             <option value="high" <?= ($_POST['priority'] ?? '') === 'high' ? 'selected' : '' ?>>High</option>
