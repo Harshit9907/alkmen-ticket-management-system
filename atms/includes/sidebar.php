@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 $role = $_SESSION['role'] ?? 'guest';
 $currentPath = basename($_SERVER['PHP_SELF']);
-$hasSidebar = true;
 ?>
 <div class="layout">
-?>
 <aside class="sidebar">
     <div>
         <h2>ATMS</h2>
@@ -18,9 +16,11 @@ $hasSidebar = true;
             <a class="<?= $currentPath === 'dashboard.php' ? 'active' : '' ?>" href="/atms/client/dashboard.php">Dashboard</a>
             <a class="<?= $currentPath === 'raise_ticket.php' ? 'active' : '' ?>" href="/atms/client/raise_ticket.php">Raise Ticket</a>
             <a class="<?= $currentPath === 'my_tickets.php' ? 'active' : '' ?>" href="/atms/client/my_tickets.php">My Tickets</a>
-        <?php elseif ($role === 'admin'): ?>
+        <?php elseif (in_array($role, ['admin', 'manager', 'client_admin'], true)): ?>
             <a class="<?= $currentPath === 'dashboard.php' ? 'active' : '' ?>" href="/atms/admin/dashboard.php">Dashboard</a>
-            <a class="<?= $currentPath === 'tickets.php' ? 'active' : '' ?>" href="/atms/admin/tickets.php">Tickets</a>
+            <a class="<?= $currentPath === 'my_tickets.php' ? 'active' : '' ?>" href="/atms/client/my_tickets.php">Scoped Tickets</a>
+            <a class="<?= $currentPath === 'raise_ticket.php' ? 'active' : '' ?>" href="/atms/client/raise_ticket.php">Raise for Client</a>
+            <a href="/atms/admin/dashboard.php#reports">Reports</a>
         <?php endif; ?>
         <a href="/atms/auth/logout.php">Logout</a>
     </nav>

@@ -17,9 +17,6 @@ $pdoOptions = [
     PDO::ATTR_EMULATE_PREPARES => false,
 ];
 
-/**
- * Create database and schema automatically if it does not exist yet.
- */
 function bootstrapDatabase(PDO $serverPdo, string $databaseName): void
 {
     $serverPdo->exec("CREATE DATABASE IF NOT EXISTS `{$databaseName}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
@@ -37,10 +34,9 @@ function bootstrapDatabase(PDO $serverPdo, string $databaseName): void
 
     $statements = array_filter(array_map('trim', explode(';', $sql)));
     foreach ($statements as $statement) {
-        if ($statement === '') {
-            continue;
+        if ($statement !== '') {
+            $serverPdo->exec($statement);
         }
-        $serverPdo->exec($statement);
     }
 }
 
@@ -57,6 +53,7 @@ try {
     $isMissingDb = $errorCode === 1049
         || str_contains($message, 'Unknown database')
         || str_contains($message, '[1049]');
+
     if (!$isMissingDb) {
         die('Database connection failed: ' . $exception->getMessage());
     }
@@ -78,14 +75,6 @@ try {
     } catch (PDOException $bootstrapException) {
         die('Database bootstrap failed: ' . $bootstrapException->getMessage());
     }
-        [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false,
-        ]
-    );
-} catch (PDOException $exception) {
-    die('Database connection failed: ' . $exception->getMessage());
 }
 
 function e(string $value): string
@@ -169,4 +158,65 @@ function uploadFile(array $file): ?string
     }
 
     return $newName;
+}
+
+/**
+ * Scope strategy:
+ * - client: can access own tickets only
+ * - manager: can access tickets of mapped users in manager_client_map
+ * - admin/client_admin: can access all client tickets
+ */
+function getScopedClientIds(PDO $pdo, int $sessionUserId, string $sessionRole): array
+{
+    if ($sessionRole === 'client') {
+        return [$sessionUserId];
+    }
+
+    if (in_array($sessionRole, ['admin', 'client_admin'], true)) {
+        $stmt = $pdo->query("SELECT id FROM users WHERE role = 'client'");
+
+        return array_map('intval', array_column($stmt->fetchAll(), 'id'));
+    }
+
+    if ($sessionRole === 'manager') {
+        $stmt = $pdo->prepare('SELECT user_id FROM manager_client_map WHERE manager_id = :manager_id');
+        $stmt->execute(['manager_id' => $sessionUserId]);
+
+        return array_map('intval', array_column($stmt->fetchAll(), 'user_id'));
+    }
+
+    return [];
+}
+
+function buildTicketScopeFilter(PDO $pdo, int $sessionUserId, string $sessionRole, string $ticketUserField = 't.user_id'): array
+{
+    $clientIds = getScopedClientIds($pdo, $sessionUserId, $sessionRole);
+    if ($clientIds === []) {
+        return ['sql' => '1 = 0', 'params' => []];
+    }
+
+    $placeholders = [];
+    $params = [];
+    foreach ($clientIds as $i => $clientId) {
+        $key = 'scope_' . $i;
+        $placeholders[] = ':' . $key;
+        $params[$key] = $clientId;
+    }
+
+    return [
+        'sql' => sprintf('%s IN (%s)', $ticketUserField, implode(', ', $placeholders)),
+        'params' => $params,
+    ];
+}
+
+function canAccessTicket(PDO $pdo, int $ticketPk, int $sessionUserId, string $sessionRole): bool
+{
+    $scope = buildTicketScopeFilter($pdo, $sessionUserId, $sessionRole, 't.user_id');
+    $query = sprintf('SELECT 1 FROM tickets t WHERE t.id = :ticket_id AND %s LIMIT 1', $scope['sql']);
+    $params = array_merge(['ticket_id' => $ticketPk], $scope['params']);
+
+    $stmt = $pdo->prepare($query);
+    $stmt->execute($params);
+
+    return (bool) $stmt->fetchColumn();
 }

@@ -5,7 +5,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/config/db.php';
 
 if (isLoggedIn()) {
-    $target = $_SESSION['role'] === 'admin' ? '/atms/admin/dashboard.php' : '/atms/client/dashboard.php';
+    $isTeamRole = in_array($_SESSION['role'], ['admin', 'manager', 'client_admin'], true);
+    $target = $isTeamRole ? '/atms/admin/dashboard.php' : '/atms/client/dashboard.php';
     redirect($target);
 }
 

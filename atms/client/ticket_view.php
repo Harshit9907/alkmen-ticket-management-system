@@ -3,11 +3,18 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/auth_check.php';
-requireRole(['client']);
+requireRole(['client', 'manager', 'admin', 'client_admin']);
 
+$sessionUserId = (int) $_SESSION['user_id'];
+$sessionRole = (string) $_SESSION['role'];
 $ticketPk = (int) ($_GET['id'] ?? 0);
-$ticketStmt = $pdo->prepare('SELECT * FROM tickets WHERE id = :id AND user_id = :user_id LIMIT 1');
-$ticketStmt->execute(['id' => $ticketPk, 'user_id' => (int) $_SESSION['user_id']]);
+
+if ($ticketPk <= 0 || !canAccessTicket($pdo, $ticketPk, $sessionUserId, $sessionRole)) {
+    redirect('/atms/client/my_tickets.php');
+}
+
+$ticketStmt = $pdo->prepare('SELECT t.*, u.name AS client_name FROM tickets t JOIN users u ON u.id = t.user_id WHERE t.id = :id LIMIT 1');
+$ticketStmt->execute(['id' => $ticketPk]);
 $ticket = $ticketStmt->fetch();
 
 if (!$ticket) {
@@ -34,23 +41,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $insertMsg = $pdo->prepare('INSERT INTO messages (ticket_id, sender_id, message, file) VALUES (:ticket_id, :sender_id, :message, :file)');
         $insertMsg->execute([
             'ticket_id' => $ticketPk,
-            'sender_id' => (int) $_SESSION['user_id'],
+            'sender_id' => $sessionUserId,
             'message' => $message !== '' ? $message : 'Shared an attachment.',
             'file' => $file,
         ]);
         redirect('/atms/client/ticket_view.php?id=' . $ticketPk);
     }
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $message = trim($_POST['message'] ?? '');
-    if ($message !== '') {
-        $insertMsg = $pdo->prepare('INSERT INTO messages (ticket_id, sender_id, message) VALUES (:ticket_id, :sender_id, :message)');
-        $insertMsg->execute([
-            'ticket_id' => $ticketPk,
-            'sender_id' => (int) $_SESSION['user_id'],
-            'message' => $message,
-        ]);
-    }
-    redirect('/atms/client/ticket_view.php?id=' . $ticketPk);
 }
 
 $msgStmt = $pdo->prepare('SELECT m.*, u.role, u.name FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.ticket_id = :ticket_id ORDER BY m.created_at ASC');
@@ -63,7 +59,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
 ?>
 <div class="card">
     <h2><?= e($ticket['subject']) ?> (<?= e($ticket['ticket_id']) ?>)</h2>
-    <p class="muted">Category: <?= e($ticket['category']) ?> | Status: <span class="<?= badgeClass($ticket['status']) ?>"><?= e(ucwords(str_replace('_', ' ', $ticket['status']))) ?></span></p>
+    <p class="muted">Client: <?= e($ticket['client_name']) ?> | Category: <?= e($ticket['category']) ?> | Status: <span class="<?= badgeClass($ticket['status']) ?>"><?= e(ucwords(str_replace('_', ' ', $ticket['status']))) ?></span></p>
     <p><?= e($ticket['description']) ?></p>
     <div class="chat-box">
         <?php foreach ($messages as $message): ?>
@@ -81,13 +77,6 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <form method="POST" enctype="multipart/form-data" class="chat-form">
         <input type="text" name="message" placeholder="Write your reply...">
         <input type="file" name="file">
-                    <a href="/atms/assets/uploads/<?= e($message['file']) ?>" target="_blank">Attachment</a>
-                <?php endif; ?>
-            </div>
-        <?php endforeach; ?>
-    </div>
-    <form method="POST" class="chat-form">
-        <input type="text" name="message" placeholder="Write your reply..." required>
         <button class="btn" type="submit">Send</button>
     </form>
 </div>

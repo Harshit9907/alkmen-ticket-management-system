@@ -6,8 +6,18 @@ CREATE TABLE IF NOT EXISTS users (
     name VARCHAR(120) NOT NULL,
     email VARCHAR(160) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
-    role ENUM('admin', 'client') NOT NULL DEFAULT 'client',
+    role ENUM('admin', 'client_admin', 'manager', 'client') NOT NULL DEFAULT 'client',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS manager_client_map (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    manager_id INT UNSIGNED NOT NULL,
+    user_id INT UNSIGNED NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_manager_user (manager_id, user_id),
+    CONSTRAINT fk_map_manager FOREIGN KEY (manager_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_map_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS tickets (
@@ -38,9 +48,18 @@ CREATE TABLE IF NOT EXISTS messages (
 
 INSERT INTO users (name, email, password, role) VALUES
 ('ATMS Admin', 'admin@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'admin'),
+('ATMS Client Admin', 'clientadmin@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'client_admin'),
+('ATMS Manager', 'manager@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'manager'),
 ('John Client', 'john.client@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'client'),
 ('Maya Client', 'maya.client@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'client')
-ON DUPLICATE KEY UPDATE email = VALUES(email);
+ON DUPLICATE KEY UPDATE email = VALUES(email), role = VALUES(role), name = VALUES(name);
+
+INSERT INTO manager_client_map (manager_id, user_id)
+SELECT m.id, c.id
+FROM users m
+JOIN users c ON c.email IN ('john.client@alkmen.com', 'maya.client@alkmen.com')
+WHERE m.email = 'manager@alkmen.com'
+ON DUPLICATE KEY UPDATE manager_id = VALUES(manager_id);
 
 INSERT INTO tickets (ticket_id, user_id, subject, description, category, priority, status, assigned_to, created_at)
 SELECT 'ALK-1001', u.id, 'Unable to login on mobile', 'Client cannot login from mobile app and gets session timeout.', 'Technical', 'high', 'open', a.id, NOW() - INTERVAL 2 DAY
@@ -65,7 +84,3 @@ SELECT t.id, a.id, 'We are checking the mobile auth logs now.', NULL, NOW() - IN
 FROM tickets t JOIN users a ON a.email = 'admin@alkmen.com'
 WHERE t.ticket_id = 'ALK-1001'
 AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.ticket_id = t.id AND m.message = 'We are checking the mobile auth logs now.');
-INSERT INTO users (name, email, password, role)
-VALUES
-('System Admin', 'admin@atms.local', '$2y$12$b9kl4WosnmJnvr38PMpg/uwLqIxqyR4JRyvaTXi5SG6o5MaKDLsdy', 'admin')
-ON DUPLICATE KEY UPDATE email = VALUES(email);
