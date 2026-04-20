@@ -78,14 +78,6 @@ try {
     } catch (PDOException $bootstrapException) {
         die('Database bootstrap failed: ' . $bootstrapException->getMessage());
     }
-        [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false,
-        ]
-    );
-} catch (PDOException $exception) {
-    die('Database connection failed: ' . $exception->getMessage());
 }
 
 function e(string $value): string
