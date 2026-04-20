@@ -8,6 +8,12 @@ requireRole(['client', 'manager', 'admin', 'client_admin']);
 $sessionUserId = (int) $_SESSION['user_id'];
 $sessionRole = (string) $_SESSION['role'];
 $scope = buildTicketScopeFilter($pdo, $sessionUserId, $sessionRole, 't.user_id');
+require_once __DIR__ . '/../includes/dashboard_scope.php';
+
+redirect(currentDashboardRoute((string) $_SESSION['role']));
+requireRole(['client', 'client_plus', 'client_support']);
+
+$userId = currentUserId();
 
 $totalStmt = $pdo->prepare('SELECT COUNT(*) FROM tickets t WHERE ' . $scope['sql']);
 $totalStmt->execute($scope['params']);
@@ -15,6 +21,9 @@ $total = (int) $totalStmt->fetchColumn();
 
 $openStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets t WHERE {$scope['sql']} AND t.status = 'open'");
 $openStmt->execute($scope['params']);
+$openStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE user_id = :user_id AND status = 'open'");
+$openStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE user_id = :user_id AND status IN ('open', 'in_progress')");
+$openStmt->execute(['user_id' => $userId]);
 $open = (int) $openStmt->fetchColumn();
 
 $resolvedStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets t WHERE {$scope['sql']} AND t.status = 'resolved'");
@@ -42,7 +51,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <div class="card stat-card"><h3>Resolved Tickets</h3><p><?= $resolved ?></p></div>
 </div>
 
-<div class="card mt-16">
+<div class="card sub-card">
     <div class="table-header">
         <h2>Recent Scoped Tickets</h2>
         <?php if ($sessionRole === 'client'): ?>
@@ -64,6 +73,11 @@ require_once __DIR__ . '/../includes/sidebar.php';
         <tbody>
         <?php if (!$recentTickets): ?>
             <tr><td colspan="7" class="muted">No tickets in your visibility scope.</td></tr>
+    <table>
+        <thead><tr><th>Ticket ID</th><th>Subject</th><th>Status</th><th>Priority</th><th>Created</th><th>Action</th></tr></thead>
+        <tbody>
+        <?php if (!$recentTickets): ?>
+            <tr><td colspan="6" class="muted">No tickets yet.</td></tr>
         <?php else: ?>
             <?php foreach ($recentTickets as $ticket): ?>
                 <tr>
@@ -79,5 +93,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
         <?php endif; ?>
         </tbody>
     </table>
+</div>
+</div>
 </div>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/auth_check.php';
 requireRole(['client', 'manager', 'admin', 'client_admin']);
+requireRole(['client', 'client_plus', 'client_support']);
 
 $allowedSort = ['created_at', 'priority', 'status'];
 $sort = in_array($_GET['sort'] ?? 'created_at', $allowedSort, true) ? $_GET['sort'] : 'created_at';
@@ -20,6 +21,8 @@ $stmt = $pdo->prepare(
      ORDER BY t.{$sort} DESC"
 );
 $stmt->execute($scope['params']);
+$stmt = $pdo->prepare("SELECT id, ticket_id, subject, status, priority, created_at FROM tickets WHERE user_id = :user_id ORDER BY {$sort} DESC");
+$stmt->execute(['user_id' => currentUserId()]);
 $tickets = $stmt->fetchAll();
 
 $pageTitle = 'Scoped Tickets';
@@ -39,6 +42,8 @@ require_once __DIR__ . '/../includes/sidebar.php';
     </div>
     <table data-sortable>
         <thead><tr><th data-sort="text">Ticket ID</th><th data-sort="text">Client</th><th data-sort="text">Subject</th><th data-sort="text">Status</th><th data-sort="text">Priority</th><th data-sort="date">Date</th><th>Action</th></tr></thead>
+    <table>
+        <thead><tr><th>Ticket ID</th><th>Subject</th><th>Status</th><th>Priority</th><th>Date</th><th>Action</th></tr></thead>
         <tbody>
             <?php if (!$tickets): ?>
                 <tr><td colspan="7" class="muted">No tickets found in your scope.</td></tr>
@@ -57,5 +62,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
             <?php endif; ?>
         </tbody>
     </table>
+</div>
+</div>
 </div>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
