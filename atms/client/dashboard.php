@@ -12,6 +12,7 @@ $totalStmt->execute(['user_id' => $userId]);
 $total = (int) $totalStmt->fetchColumn();
 
 $openStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE user_id = :user_id AND status IN ('open', 'in_progress')");
+$openStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE user_id = :user_id AND status = 'open'");
 $openStmt->execute(['user_id' => $userId]);
 $open = (int) $openStmt->fetchColumn();
 
@@ -66,5 +67,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
         <?php endif; ?>
         </tbody>
     </table>
+    <div class="card stat-card"><h3>Open</h3><p><?= $open ?></p></div>
+    <div class="card stat-card"><h3>Resolved</h3><p><?= $resolved ?></p></div>
 </div>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

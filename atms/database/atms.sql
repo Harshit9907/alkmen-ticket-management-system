@@ -65,3 +65,7 @@ SELECT t.id, a.id, 'We are checking the mobile auth logs now.', NULL, NOW() - IN
 FROM tickets t JOIN users a ON a.email = 'admin@alkmen.com'
 WHERE t.ticket_id = 'ALK-1001'
 AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.ticket_id = t.id AND m.message = 'We are checking the mobile auth logs now.');
+INSERT INTO users (name, email, password, role)
+VALUES
+('System Admin', 'admin@atms.local', '$2y$12$b9kl4WosnmJnvr38PMpg/uwLqIxqyR4JRyvaTXi5SG6o5MaKDLsdy', 'admin')
+ON DUPLICATE KEY UPDATE email = VALUES(email);
