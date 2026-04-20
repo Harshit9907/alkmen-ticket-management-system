@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 $role = $_SESSION['role'] ?? 'guest';
 $currentPath = basename($_SERVER['PHP_SELF']);
+$hasSidebar = true;
+?>
+<div class="layout">
 ?>
 <aside class="sidebar">
     <div>

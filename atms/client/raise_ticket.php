@@ -23,6 +23,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $uploadName = null;
+    if (!empty($_FILES['file']['name'])) {
+        $uploadName = uploadFile($_FILES['file']);
+        if ($uploadName === null) {
+            $errors[] = 'Invalid file or file upload failed. Allowed: jpg, jpeg, png, pdf, txt, doc, docx.';
     if (!empty($_FILES['file']['name']) && $_FILES['file']['error'] === UPLOAD_ERR_OK) {
         $ext = strtolower(pathinfo($_FILES['file']['name'], PATHINFO_EXTENSION));
         $allowed = ['jpg', 'jpeg', 'png', 'pdf', 'txt', 'doc', 'docx'];
@@ -53,6 +57,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'status' => 'open',
         ]);
 
+        $ticketPk = (int) $pdo->lastInsertId();
+        $initialMsg = $pdo->prepare('INSERT INTO messages (ticket_id, sender_id, message, file) VALUES (:ticket_id, :sender_id, :message, :file)');
+        $initialMsg->execute([
+            'ticket_id' => $ticketPk,
+            'sender_id' => (int) $_SESSION['user_id'],
+            'message' => 'Ticket created: ' . $description,
+            'file' => $uploadName,
+        ]);
+
+        redirect('/atms/client/ticket_view.php?id=' . $ticketPk);
         if ($uploadName !== null) {
             $messageStmt = $pdo->prepare('INSERT INTO messages (ticket_id, sender_id, message, file) VALUES (:ticket_id, :sender_id, :message, :file)');
             $messageStmt->execute([
@@ -74,6 +88,18 @@ require_once __DIR__ . '/../includes/sidebar.php';
 <div class="card form-card">
     <h2>Raise a New Ticket</h2>
     <?php foreach ($errors as $error): ?><p class="alert-error"><?= e($error) ?></p><?php endforeach; ?>
+    <form method="POST" enctype="multipart/form-data">
+        <label>Subject</label>
+        <input type="text" name="subject" value="<?= e($_POST['subject'] ?? '') ?>" required>
+        <label>Category</label>
+        <select name="category" required>
+            <option value="General">General</option>
+            <option value="Technical">Technical</option>
+            <option value="Billing">Billing</option>
+            <option value="Account">Account</option>
+        </select>
+        <label>Priority</label>
+        <select name="priority" required>
     <?php if ($success): ?><p class="alert-success"><?= e($success) ?></p><?php endif; ?>
     <form method="POST" enctype="multipart/form-data">
         <label>Subject</label>
@@ -93,6 +119,9 @@ require_once __DIR__ . '/../includes/sidebar.php';
             <option value="medium">Medium</option>
             <option value="high">High</option>
         </select>
+        <label>Description</label>
+        <textarea name="description" rows="5" required><?= e($_POST['description'] ?? '') ?></textarea>
+        <label>Attachment (optional)</label>
         <label>File</label>
         <input type="file" name="file">
         <button type="submit" class="btn">Submit Ticket</button>

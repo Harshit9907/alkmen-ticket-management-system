@@ -79,3 +79,32 @@ function priorityClass(string $priority): string
         default => 'priority priority-low',
     };
 }
+
+function allowedUploadExtension(string $fileName): bool
+{
+    $allowed = ['jpg', 'jpeg', 'png', 'pdf', 'txt', 'doc', 'docx'];
+    $extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+
+    return in_array($extension, $allowed, true);
+}
+
+function uploadFile(array $file): ?string
+{
+    if (!isset($file['name'], $file['tmp_name'], $file['error']) || $file['error'] !== UPLOAD_ERR_OK) {
+        return null;
+    }
+
+    if (!allowedUploadExtension($file['name'])) {
+        return null;
+    }
+
+    $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    $newName = uniqid('atms_', true) . '.' . $extension;
+    $destination = __DIR__ . '/../assets/uploads/' . $newName;
+
+    if (!move_uploaded_file($file['tmp_name'], $destination)) {
+        return null;
+    }
+
+    return $newName;
+}

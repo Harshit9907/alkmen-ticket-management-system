@@ -41,6 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'name' => $name,
                 'email' => $email,
                 'password' => $hashedPassword,
+                'role' => 'client',
                 'role' => $role,
             ]);
             redirect('/atms/auth/login.php');
@@ -58,6 +59,11 @@ require_once __DIR__ . '/../includes/header.php';
             <p class="alert-error"><?= e($error) ?></p>
         <?php endforeach; ?>
         <label>Name</label>
+        <input type="text" name="name" value="<?= e($_POST['name'] ?? '') ?>" required>
+        <label>Email</label>
+        <input type="email" name="email" value="<?= e($_POST['email'] ?? '') ?>" required>
+        <label>Password</label>
+        <input type="password" name="password" required>
         <input type="text" name="name" required>
         <label>Email</label>
         <input type="email" name="email" required>

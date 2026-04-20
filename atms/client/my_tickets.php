@@ -27,6 +27,23 @@ require_once __DIR__ . '/../includes/sidebar.php';
             </select>
         </form>
     </div>
+    <table data-sortable>
+        <thead><tr><th data-sort="text">Ticket ID</th><th data-sort="text">Subject</th><th data-sort="text">Status</th><th data-sort="text">Priority</th><th data-sort="date">Date</th><th>Action</th></tr></thead>
+        <tbody>
+            <?php if (!$tickets): ?>
+                <tr><td colspan="6" class="muted">No tickets found.</td></tr>
+            <?php else: ?>
+                <?php foreach ($tickets as $ticket): ?>
+                    <tr>
+                        <td><?= e($ticket['ticket_id']) ?></td>
+                        <td><?= e($ticket['subject']) ?></td>
+                        <td><span class="<?= badgeClass($ticket['status']) ?>"><?= e(ucwords(str_replace('_', ' ', $ticket['status']))) ?></span></td>
+                        <td><span class="<?= priorityClass($ticket['priority']) ?>"><?= e(ucfirst($ticket['priority'])) ?></span></td>
+                        <td><?= e(date('M d, Y h:i A', strtotime($ticket['created_at']))) ?></td>
+                        <td><a href="/atms/client/ticket_view.php?id=<?= (int) $ticket['id'] ?>">View</a></td>
+                    </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
     <table>
         <thead><tr><th>Ticket ID</th><th>Subject</th><th>Status</th><th>Priority</th><th>Date</th><th>Action</th></tr></thead>
         <tbody>

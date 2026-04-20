@@ -14,6 +14,32 @@ if (!$ticket) {
     redirect('/atms/client/my_tickets.php');
 }
 
+$error = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $message = trim($_POST['message'] ?? '');
+    $file = null;
+
+    if (!empty($_FILES['file']['name'])) {
+        $file = uploadFile($_FILES['file']);
+        if ($file === null) {
+            $error = 'Invalid attachment file.';
+        }
+    }
+
+    if ($message === '' && $file === null) {
+        $error = 'Please enter a message or upload a file.';
+    }
+
+    if ($error === '') {
+        $insertMsg = $pdo->prepare('INSERT INTO messages (ticket_id, sender_id, message, file) VALUES (:ticket_id, :sender_id, :message, :file)');
+        $insertMsg->execute([
+            'ticket_id' => $ticketPk,
+            'sender_id' => (int) $_SESSION['user_id'],
+            'message' => $message !== '' ? $message : 'Shared an attachment.',
+            'file' => $file,
+        ]);
+        redirect('/atms/client/ticket_view.php?id=' . $ticketPk);
+    }
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $message = trim($_POST['message'] ?? '');
     if ($message !== '') {
@@ -37,6 +63,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
 ?>
 <div class="card">
     <h2><?= e($ticket['subject']) ?> (<?= e($ticket['ticket_id']) ?>)</h2>
+    <p class="muted">Category: <?= e($ticket['category']) ?> | Status: <span class="<?= badgeClass($ticket['status']) ?>"><?= e(ucwords(str_replace('_', ' ', $ticket['status']))) ?></span></p>
     <p><?= e($ticket['description']) ?></p>
     <div class="chat-box">
         <?php foreach ($messages as $message): ?>
@@ -44,6 +71,16 @@ require_once __DIR__ . '/../includes/sidebar.php';
                 <strong><?= e($message['name']) ?></strong>
                 <p><?= nl2br(e($message['message'])) ?></p>
                 <?php if (!empty($message['file'])): ?>
+                    <a href="/atms/assets/uploads/<?= e($message['file']) ?>" target="_blank">Open Attachment</a>
+                <?php endif; ?>
+                <small class="muted"><?= e(date('M d, Y h:i A', strtotime($message['created_at']))) ?></small>
+            </div>
+        <?php endforeach; ?>
+    </div>
+    <?php if ($error): ?><p class="alert-error"><?= e($error) ?></p><?php endif; ?>
+    <form method="POST" enctype="multipart/form-data" class="chat-form">
+        <input type="text" name="message" placeholder="Write your reply...">
+        <input type="file" name="file">
                     <a href="/atms/assets/uploads/<?= e($message['file']) ?>" target="_blank">Attachment</a>
                 <?php endif; ?>
             </div>
