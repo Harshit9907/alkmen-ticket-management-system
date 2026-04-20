@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/auth_check.php';
-requireRole(['client']);
+requireRole(['client', 'client_plus', 'client_support']);
 
 $allowedSort = ['created_at', 'priority', 'status'];
 $sort = in_array($_GET['sort'] ?? 'created_at', $allowedSort, true) ? $_GET['sort'] : 'created_at';

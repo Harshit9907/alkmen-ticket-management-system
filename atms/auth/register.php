@@ -60,6 +60,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $success = 'Registration complete. You can login now.';
             }
+            $insert = $pdo->prepare('INSERT INTO users (name, email, password, role) VALUES (:name, :email, :password, :role)');
+            $insert->execute([
+                'name' => $name,
+                'email' => $email,
+                'password' => password_hash($password, PASSWORD_DEFAULT),
+                'role' => 'client',
+            ]);
+            redirect('/atms/auth/login.php');
         }
     }
 }
@@ -82,6 +90,7 @@ require_once __DIR__ . '/../includes/header.php';
         <label>Password</label>
         <input type="password" name="password" required>
         <button type="submit" class="btn">Complete Registration</button>
+        <button type="submit" class="btn">Register</button>
         <p>Have an account? <a href="/atms/auth/login.php">Login</a></p>
     </form>
 </div>

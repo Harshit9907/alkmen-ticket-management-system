@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', () => {
     headers.forEach((header, idx) => {
       header.addEventListener('click', () => {
         const body = table.querySelector('tbody');
+        if (!body) return;
+
         const rows = Array.from(body.querySelectorAll('tr'));
         const dir = header.dataset.dir === 'asc' ? 'desc' : 'asc';
         const type = header.dataset.sort || 'text';
@@ -21,28 +23,11 @@ document.addEventListener('DOMContentLoaded', () => {
           h.dataset.dir = '';
           h.classList.remove('asc', 'desc');
         });
+
         header.dataset.dir = dir;
         header.classList.add(dir);
         rows.forEach((row) => body.appendChild(row));
       });
-  const tableHeaders = document.querySelectorAll('th[data-sort]');
-  tableHeaders.forEach((header) => {
-    header.addEventListener('click', () => {
-      const table = header.closest('table');
-      const index = [...header.parentElement.children].indexOf(header);
-      const rows = [...table.querySelectorAll('tbody tr')];
-      const asc = !header.classList.contains('asc');
-
-      rows.sort((a, b) => {
-        const aText = a.children[index].innerText.trim().toLowerCase();
-        const bText = b.children[index].innerText.trim().toLowerCase();
-        return asc ? aText.localeCompare(bText) : bText.localeCompare(aText);
-      });
-
-      table.querySelector('tbody').innerHTML = '';
-      rows.forEach((row) => table.querySelector('tbody').appendChild(row));
-      tableHeaders.forEach((h) => h.classList.remove('asc', 'desc'));
-      header.classList.add(asc ? 'asc' : 'desc');
     });
   });
 });
