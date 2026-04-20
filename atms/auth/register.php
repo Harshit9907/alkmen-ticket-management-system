@@ -14,6 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = trim($_POST['name'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
+    $role = ($_POST['role'] ?? 'client') === 'admin' ? 'admin' : 'client';
 
     if ($name === '' || strlen($name) < 2) {
         $errors[] = 'Name must be at least 2 characters.';
@@ -41,6 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'email' => $email,
                 'password' => $hashedPassword,
                 'role' => 'client',
+                'role' => $role,
             ]);
             redirect('/atms/auth/login.php');
         }
@@ -62,6 +64,16 @@ require_once __DIR__ . '/../includes/header.php';
         <input type="email" name="email" value="<?= e($_POST['email'] ?? '') ?>" required>
         <label>Password</label>
         <input type="password" name="password" required>
+        <input type="text" name="name" required>
+        <label>Email</label>
+        <input type="email" name="email" required>
+        <label>Password</label>
+        <input type="password" name="password" required>
+        <label>Role</label>
+        <select name="role">
+            <option value="client">Client</option>
+            <option value="admin">Admin</option>
+        </select>
         <button type="submit" class="btn">Register</button>
         <p>Have an account? <a href="/atms/auth/login.php">Login</a></p>
     </form>

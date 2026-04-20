@@ -44,6 +44,19 @@ require_once __DIR__ . '/../includes/sidebar.php';
                     </tr>
                 <?php endforeach; ?>
             <?php endif; ?>
+    <table>
+        <thead><tr><th>Ticket ID</th><th>Subject</th><th>Status</th><th>Priority</th><th>Date</th><th>Action</th></tr></thead>
+        <tbody>
+            <?php foreach ($tickets as $ticket): ?>
+                <tr>
+                    <td><?= e($ticket['ticket_id']) ?></td>
+                    <td><?= e($ticket['subject']) ?></td>
+                    <td><span class="<?= badgeClass($ticket['status']) ?>"><?= e(ucwords(str_replace('_', ' ', $ticket['status']))) ?></span></td>
+                    <td><span class="<?= priorityClass($ticket['priority']) ?>"><?= e(ucfirst($ticket['priority'])) ?></span></td>
+                    <td><?= e(date('M d, Y', strtotime($ticket['created_at']))) ?></td>
+                    <td><a href="/atms/client/ticket_view.php?id=<?= (int) $ticket['id'] ?>">View</a></td>
+                </tr>
+            <?php endforeach; ?>
         </tbody>
     </table>
 </div>
