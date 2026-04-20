@@ -9,7 +9,7 @@ $allowedSort = ['created_at', 'priority', 'status'];
 $sort = in_array($_GET['sort'] ?? 'created_at', $allowedSort, true) ? $_GET['sort'] : 'created_at';
 
 $stmt = $pdo->prepare("SELECT id, ticket_id, subject, status, priority, created_at FROM tickets WHERE user_id = :user_id ORDER BY {$sort} DESC");
-$stmt->execute(['user_id' => (int) $_SESSION['user_id']]);
+$stmt->execute(['user_id' => currentUserId()]);
 $tickets = $stmt->fetchAll();
 
 $pageTitle = 'My Tickets';
@@ -27,8 +27,8 @@ require_once __DIR__ . '/../includes/sidebar.php';
             </select>
         </form>
     </div>
-    <table data-sortable>
-        <thead><tr><th data-sort="text">Ticket ID</th><th data-sort="text">Subject</th><th data-sort="text">Status</th><th data-sort="text">Priority</th><th data-sort="date">Date</th><th>Action</th></tr></thead>
+    <table>
+        <thead><tr><th>Ticket ID</th><th>Subject</th><th>Status</th><th>Priority</th><th>Date</th><th>Action</th></tr></thead>
         <tbody>
             <?php if (!$tickets): ?>
                 <tr><td colspan="6" class="muted">No tickets found.</td></tr>

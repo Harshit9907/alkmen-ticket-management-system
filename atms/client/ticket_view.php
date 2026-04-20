@@ -7,9 +7,8 @@ requireRole(['client', 'client_plus', 'client_support']);
 
 $ticketPk = (int) ($_GET['id'] ?? 0);
 $ticketStmt = $pdo->prepare('SELECT * FROM tickets WHERE id = :id AND user_id = :user_id LIMIT 1');
-$ticketStmt->execute(['id' => $ticketPk, 'user_id' => (int) $_SESSION['user_id']]);
+$ticketStmt->execute(['id' => $ticketPk, 'user_id' => currentUserId()]);
 $ticket = $ticketStmt->fetch();
-
 if (!$ticket) {
     redirect('/atms/client/my_tickets.php');
 }
@@ -40,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $insertMsg = $pdo->prepare('INSERT INTO messages (ticket_id, sender_id, message, file) VALUES (:ticket_id, :sender_id, :message, :file)');
         $insertMsg->execute([
             'ticket_id' => $ticketPk,
-            'sender_id' => (int) $_SESSION['user_id'],
+            'sender_id' => currentUserId(),
             'message' => $message !== '' ? $message : 'Shared an attachment.',
             'file' => $file,
         ]);
@@ -83,6 +82,9 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <?php if (!$canReply): ?><p class="muted">Thread is read-only for your role.</p><?php endif; ?>
 
     <form method="POST" enctype="multipart/form-data" class="chat-form">
+        <input type="text" name="message" placeholder="Write your reply...">
+        <input type="file" name="file">
+        <button class="btn" type="submit">Send</button>
         <input type="text" name="message" placeholder="Write your reply..." <?= $canReply ? '' : 'disabled' ?>>
         <input type="file" name="file" <?= $canReply ? '' : 'disabled' ?>>
         <button class="btn" type="submit" <?= $canReply ? '' : 'disabled' ?>>Send</button>
@@ -102,6 +104,8 @@ require_once __DIR__ . '/../includes/sidebar.php';
             <?php endforeach; ?>
         <?php endif; ?>
     </div>
+</div>
+</div>
 </div>
 </div>
 </div>

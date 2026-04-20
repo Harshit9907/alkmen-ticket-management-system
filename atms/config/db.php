@@ -44,6 +44,8 @@ try {
     $pdo = new PDO("mysql:host={$host};dbname={$dbname};charset=utf8mb4", $username, $password, $pdoOptions);
 } catch (PDOException $exception) {
     $errorCode = (int) ($exception->errorInfo[1] ?? 0);
+    $message = $exception->getMessage();
+    $isMissingDb = $errorCode === 1049 || str_contains($message, 'Unknown database') || str_contains($message, '[1049]');
     $isMissingDb = $errorCode === 1049 || str_contains($exception->getMessage(), 'Unknown database');
 
     if (!$isMissingDb) {
@@ -75,6 +77,17 @@ function isLoggedIn(): bool
     return isset($_SESSION['user_id'], $_SESSION['role']);
 }
 
+function currentUserId(): int
+{
+    return (int) ($_SESSION['user_id'] ?? 0);
+}
+
+function currentCompanyId(): ?int
+{
+    $companyId = $_SESSION['company_id'] ?? null;
+    return $companyId === null ? null : (int) $companyId;
+}
+
 function requireRole(array $roles): void
 {
     if (!isLoggedIn() || !in_array($_SESSION['role'], $roles, true)) {
@@ -82,6 +95,9 @@ function requireRole(array $roles): void
     }
 }
 
+function canManageTickets(): bool
+{
+    return in_array($_SESSION['role'] ?? '', ['client_admin', 'super_admin'], true);
 function canManageTicketActions(): bool
 {
     return (($_SESSION['role'] ?? '') === 'super_admin');

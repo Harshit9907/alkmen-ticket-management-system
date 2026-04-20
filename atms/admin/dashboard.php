@@ -3,6 +3,38 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/auth_check.php';
+requireRole(['client_admin', 'super_admin']);
+
+$companyFilter = '';
+$params = [];
+if ($_SESSION['role'] !== 'super_admin') {
+    $companyFilter = ' WHERE u.company_id = :company_id ';
+    $params['company_id'] = currentCompanyId();
+}
+
+$totalStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets t JOIN users u ON u.id = t.user_id {$companyFilter}");
+$totalStmt->execute($params);
+$total = (int) $totalStmt->fetchColumn();
+
+$pendingStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets t JOIN users u ON u.id = t.user_id {$companyFilter} " . ($companyFilter ? ' AND ' : ' WHERE ') . "t.status IN ('open', 'in_progress')");
+$pendingStmt->execute($params);
+$pending = (int) $pendingStmt->fetchColumn();
+
+$resolvedStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets t JOIN users u ON u.id = t.user_id {$companyFilter} " . ($companyFilter ? ' AND ' : ' WHERE ') . "t.status = 'resolved'");
+$resolvedStmt->execute($params);
+$resolved = (int) $resolvedStmt->fetchColumn();
+
+$activitySql = "SELECT t.ticket_id, t.subject, t.status, t.created_at, u.name AS client_name
+     FROM tickets t
+     JOIN users u ON u.id = t.user_id";
+if ($companyFilter) {
+    $activitySql .= ' WHERE u.company_id = :company_id';
+}
+$activitySql .= ' ORDER BY t.created_at DESC LIMIT 8';
+$activityStmt = $pdo->prepare($activitySql);
+$activityStmt->execute($params);
+$activity = $activityStmt->fetchAll();
+
 requireRole(['admin', 'super_admin']);
 
 $total = (int) $pdo->query('SELECT COUNT(*) FROM tickets')->fetchColumn();
@@ -38,6 +70,8 @@ require_once __DIR__ . '/../includes/sidebar.php';
         <h2>Recent Activity</h2>
         <a class="btn" href="/atms/admin/tickets.php">Manage Tickets</a>
     </div>
+    <table>
+        <thead><tr><th>Ticket</th><th>Client</th><th>Subject</th><th>Status</th><th>Created</th></tr></thead>
     <table data-sortable>
         <thead><tr><th data-sort="text">Ticket</th><th data-sort="text">Client</th><th data-sort="text">Status</th><th data-sort="date">SLA Deadline</th><th data-sort="text">Overdue</th></tr></thead>
         <tbody>

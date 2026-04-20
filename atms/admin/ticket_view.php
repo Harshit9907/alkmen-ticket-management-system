@@ -3,6 +3,24 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/auth_check.php';
+requireRole(['client_admin', 'super_admin']);
+
+$ticketPk = (int) ($_GET['id'] ?? 0);
+$params = ['id' => $ticketPk];
+
+$sql = 'SELECT t.*, u.name AS client_name, a.name AS assignee_name, u.company_id
+        FROM tickets t
+        JOIN users u ON u.id = t.user_id
+        LEFT JOIN users a ON a.id = t.assigned_to
+        WHERE t.id = :id';
+if ($_SESSION['role'] !== 'super_admin') {
+    $sql .= ' AND u.company_id = :company_id';
+    $params['company_id'] = currentCompanyId();
+}
+$sql .= ' LIMIT 1';
+
+$ticketStmt = $pdo->prepare($sql);
+$ticketStmt->execute($params);
 requireRole(['admin', 'super_admin']);
 
 $ticketPk = (int) ($_GET['id'] ?? 0);
@@ -15,16 +33,27 @@ $ticketStmt = $pdo->prepare(
 );
 $ticketStmt->execute(['id' => $ticketPk]);
 $ticket = $ticketStmt->fetch();
-
 if (!$ticket) {
     redirect('/atms/admin/tickets.php');
 }
 
+$adminsStmt = $pdo->prepare("SELECT id, name FROM users WHERE role = 'client_admin' AND company_id = :company_id ORDER BY name ASC");
+$adminsStmt->execute(['company_id' => (int) $ticket['company_id']]);
+$admins = $adminsStmt->fetchAll();
 $admins = $pdo->query("SELECT id, name FROM users WHERE role IN ('admin', 'super_admin') ORDER BY name ASC")->fetchAll();
 $error = '';
 $canAct = canManageTicketActions();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $status = in_array($_POST['status'] ?? '', ['open', 'in_progress', 'resolved'], true) ? $_POST['status'] : $ticket['status'];
+    $assignTo = (int) ($_POST['assigned_to'] ?? 0);
+    $message = trim($_POST['message'] ?? '');
+    $file = null;
+
+    if (!empty($_FILES['file']['name'])) {
+        $file = uploadFile($_FILES['file']);
+        if ($file === null) {
+            $error = 'Attachment upload failed.';
     if (!$canAct) {
         $error = 'Only super_admin can change status, assignment, SLA, or send official support replies.';
     } else {
@@ -44,6 +73,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $assignTo = (int) ($ticket['assigned_to'] ?? 0);
         }
 
+    if ($error === '') {
+        $update = $pdo->prepare('UPDATE tickets SET status = :status, assigned_to = :assigned_to WHERE id = :id');
+        $update->execute(['status' => $status, 'assigned_to' => $assignTo ?: null, 'id' => $ticketPk]);
+
+        if ($message !== '' || $file !== null) {
+            $insertMsg = $pdo->prepare('INSERT INTO messages (ticket_id, sender_id, message, file) VALUES (:ticket_id, :sender_id, :message, :file)');
+            $insertMsg->execute([
+                'ticket_id' => $ticketPk,
+                'sender_id' => currentUserId(),
+                'message' => $message !== '' ? $message : 'Shared an attachment.',
+                'file' => $file,
+            ]);
+        }
+
+        redirect('/atms/admin/ticket_view.php?id=' . $ticketPk);
         $isOverdue = $deadline !== null && strtotime($deadline) < time() ? 1 : 0;
 
         $update = $pdo->prepare('UPDATE tickets SET status = :status, assigned_to = :assigned_to, sla_deadline = :sla_deadline, is_overdue = :is_overdue WHERE id = :id');
@@ -117,14 +161,15 @@ require_once __DIR__ . '/../includes/sidebar.php';
         </div>
         <div>
             <label>Assign Ticket</label>
+            <select name="assigned_to">
+                <option value="0">Unassigned</option>
             <select name="assigned_to" <?= $canAct ? '' : 'disabled' ?>>
                 <?php foreach ($admins as $admin): ?>
-                    <option value="<?= (int) $admin['id'] ?>" <?= (int) $ticket['assigned_to'] === (int) $admin['id'] ? 'selected' : '' ?>>
-                        <?= e($admin['name']) ?>
-                    </option>
+                    <option value="<?= (int) $admin['id'] ?>" <?= (int) $ticket['assigned_to'] === (int) $admin['id'] ? 'selected' : '' ?>><?= e($admin['name']) ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
+        <button type="submit" class="btn">Save Changes</button>
         <div>
             <label>SLA Deadline</label>
             <input type="datetime-local" name="sla_deadline" value="<?= $ticket['sla_deadline'] ? e(date('Y-m-d\TH:i', strtotime($ticket['sla_deadline']))) : '' ?>" <?= $canAct ? '' : 'disabled' ?>>
@@ -148,6 +193,12 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <form method="POST" enctype="multipart/form-data" class="chat-form">
         <input type="hidden" name="status" value="<?= e($ticket['status']) ?>">
         <input type="hidden" name="assigned_to" value="<?= (int) ($ticket['assigned_to'] ?? 0) ?>">
+        <input type="text" name="message" placeholder="Reply to ticket...">
+        <input type="file" name="file">
+        <button type="submit" class="btn">Send Reply</button>
+    </form>
+</div>
+</div>
         <input type="hidden" name="sla_deadline" value="<?= $ticket['sla_deadline'] ? e(date('Y-m-d\TH:i', strtotime($ticket['sla_deadline']))) : '' ?>">
         <input type="text" name="message" placeholder="Official support reply..." <?= $canAct ? '' : 'disabled' ?>>
         <input type="file" name="file" <?= $canAct ? '' : 'disabled' ?>>
