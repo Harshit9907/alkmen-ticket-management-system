@@ -46,6 +46,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (strtolower($invite['email']) !== strtolower($email)) {
             $errors[] = 'Invitation token does not match this email.';
         } else {
+            $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+
+            try {
+                $pdo->beginTransaction();
+
+                $insert = $pdo->prepare('INSERT INTO users (name, email, password, role) VALUES (:name, :email, :password, :role)');
             $companyStmt = $pdo->query("SELECT id FROM companies WHERE status = 'active' ORDER BY id ASC LIMIT 1");
             $companyId = (int) ($companyStmt->fetchColumn() ?: 0);
 
@@ -59,6 +65,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'email' => $email,
                     'password' => $hashedPassword,
                     'role' => 'client',
+                ]);
+
+                $userId = (int) $pdo->lastInsertId();
+                $linkRole = $pdo->prepare(
+                    'INSERT INTO user_roles (user_id, role_id)
+                     SELECT :user_id, r.id
+                     FROM roles r
+                     WHERE r.role_key = :role_key
+                     LIMIT 1'
+                );
+                $linkRole->execute([
+                    'user_id' => $userId,
+                    'role_key' => 'employee',
+                ]);
+
+                $pdo->commit();
+                redirect('/atms/auth/login.php');
+            } catch (Throwable $exception) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                $errors[] = 'Unable to create account right now. Please try again.';
+            }
                     'company_id' => $companyId,
                 ]);
                 redirect('/atms/auth/login.php');

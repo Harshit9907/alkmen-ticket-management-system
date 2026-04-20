@@ -174,6 +174,8 @@ function ensureRbacSchema(PDO $pdo): void
         if ($statement !== '') {
             $serverPdo->exec($statement);
         }
+
+        $serverPdo->exec($statement);
     }
 }
 
@@ -410,9 +412,86 @@ function redirect(string $url): never
     exit;
 }
 
+function canonicalRoleKey(string $role): string
+{
+    $map = [
+        'admin' => 'super_admin',
+        'client' => 'employee',
+    ];
+
+    return $map[$role] ?? $role;
+}
+
+function resolveLegacyRole(array $roleKeys): string
+{
+    return in_array('super_admin', $roleKeys, true) ? 'admin' : 'client';
+}
+
+/**
+ * Load role + permission context in session for current user.
+ */
+function hydrateAuthContext(PDO $pdo, int $userId): void
+{
+    $stmt = $pdo->prepare(
+        'SELECT r.role_key
+         FROM user_roles ur
+         INNER JOIN roles r ON r.id = ur.role_id
+         WHERE ur.user_id = :user_id'
+    );
+    $stmt->execute(['user_id' => $userId]);
+    $roleKeys = array_values(array_unique(array_map(
+        static fn(array $row): string => canonicalRoleKey((string) $row['role_key']),
+        $stmt->fetchAll()
+    )));
+
+    if ($roleKeys === []) {
+        $roleKeys = ['employee'];
+    }
+
+    $permissionsStmt = $pdo->prepare(
+        'SELECT DISTINCT p.permission_key
+         FROM user_roles ur
+         INNER JOIN role_permissions rp ON rp.role_id = ur.role_id
+         INNER JOIN permissions p ON p.id = rp.permission_id
+         WHERE ur.user_id = :user_id'
+    );
+    $permissionsStmt->execute(['user_id' => $userId]);
+    $permissions = array_values(array_unique(array_map(
+        static fn(array $row): string => (string) $row['permission_key'],
+        $permissionsStmt->fetchAll()
+    )));
+
+    $_SESSION['role_keys'] = $roleKeys;
+    $_SESSION['permissions'] = $permissions;
+    $_SESSION['role_key'] = $roleKeys[0];
+
+    // Keep legacy key for old UI routes.
+    $_SESSION['role'] = resolveLegacyRole($roleKeys);
+}
+
 function isLoggedIn(): bool
 {
-    return isset($_SESSION['user_id'], $_SESSION['role']);
+    return isset($_SESSION['user_id'], $_SESSION['role_keys']) && is_array($_SESSION['role_keys']);
+}
+
+function hasRole(string $role): bool
+{
+    $roleKeys = $_SESSION['role_keys'] ?? [];
+    if (!is_array($roleKeys)) {
+        return false;
+    }
+
+    return in_array(canonicalRoleKey($role), $roleKeys, true);
+}
+
+function hasPermission(string $permission): bool
+{
+    $permissions = $_SESSION['permissions'] ?? [];
+    if (!is_array($permissions)) {
+        return false;
+    }
+
+    return in_array($permission, $permissions, true);
 }
 
 function refreshSessionAuth(PDO $pdo, int $userId): void
@@ -454,11 +533,39 @@ function currentCompanyId(): ?int
 
 function requireRole(array $roles): void
 {
-    if (!isLoggedIn() || !in_array($_SESSION['role'], $roles, true)) {
+    if (!isLoggedIn()) {
+        redirect('/atms/index.php');
+    }
+
+    foreach ($roles as $role) {
+        if (hasRole((string) $role)) {
+            return;
+        }
+    }
+
+    redirect('/atms/index.php');
+}
+
+function requirePermission(string $permission): void
+{
+    if (!isLoggedIn() || !hasPermission($permission)) {
         redirect('/atms/index.php');
     }
 }
 
+function requireAnyPermission(array $permissions): void
+{
+    if (!isLoggedIn()) {
+        redirect('/atms/index.php');
+    }
+
+    foreach ($permissions as $permission) {
+        if (hasPermission((string) $permission)) {
+            return;
+        }
+    }
+
+    redirect('/atms/index.php');
 function syncSessionCompanyId(PDO $pdo): void
 {
     if (!isset($_SESSION['user_id'])) {

@@ -6,6 +6,7 @@ require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/includes/dashboard_scope.php';
 
 if (isLoggedIn()) {
+    $target = hasRole('super_admin') ? '/atms/admin/dashboard.php' : '/atms/client/dashboard.php';
     $isTeamRole = in_array($_SESSION['role'], ['admin', 'manager', 'client_admin'], true);
     $target = $isTeamRole ? '/atms/admin/dashboard.php' : '/atms/client/dashboard.php';
     redirect(currentDashboardRoute((string) $_SESSION['role']));

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-$role = $_SESSION['role'] ?? 'guest';
+$isSuperAdmin = hasRole('super_admin');
 $currentPath = basename($_SERVER['PHP_SELF']);
 ?>
 <div class="layout">
@@ -37,6 +37,11 @@ $currentPath = basename($_SERVER['PHP_SELF']);
         <p>Ticket System</p>
     </div>
     <nav>
+        <?php if (!$isSuperAdmin): ?>
+            <a class="<?= $currentPath === 'dashboard.php' ? 'active' : '' ?>" href="/atms/client/dashboard.php">Dashboard</a>
+            <a class="<?= $currentPath === 'raise_ticket.php' ? 'active' : '' ?>" href="/atms/client/raise_ticket.php">Raise Ticket</a>
+            <a class="<?= $currentPath === 'my_tickets.php' ? 'active' : '' ?>" href="/atms/client/my_tickets.php">My Tickets</a>
+        <?php else: ?>
         <?php if (in_array($role, ['super_admin', 'admin'], true)): ?>
             <a class="<?= $currentPath === 'dashboard.php' ? 'active' : '' ?>" href="/atms/super_admin/dashboard.php">Dashboard</a>
             <a class="<?= $currentPath === 'tickets.php' ? 'active' : '' ?>" href="/atms/admin/tickets.php">Tickets</a>

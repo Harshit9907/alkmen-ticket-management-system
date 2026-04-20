@@ -18,6 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!filter_var($email, FILTER_VALIDATE_EMAIL) || $password === '') {
         $error = 'Please provide valid credentials.';
     } else {
+        $stmt = $pdo->prepare('SELECT id, name, password FROM users WHERE email = :email LIMIT 1');
         $stmt = $pdo->prepare('SELECT id, name, password, role, company_id FROM users WHERE email = :email LIMIT 1');
         $stmt = $pdo->prepare('SELECT id, name, password, role, company_id, manager_id FROM users WHERE email = :email LIMIT 1');
         $stmt = $pdo->prepare('SELECT id, company_id, name, password, role, must_reset_password, is_active FROM users WHERE email = :email LIMIT 1');
@@ -30,6 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['user_id'] = (int) $user['id'];
             $_SESSION['company_id'] = $user['company_id'] === null ? null : (int) $user['company_id'];
             $_SESSION['name'] = $user['name'];
+            hydrateAuthContext($pdo, (int) $user['id']);
             $_SESSION['role'] = $user['role'];
             $_SESSION['company_id'] = (int) $user['company_id'];
             $_SESSION['company_id'] = $user['company_id'] !== null ? (int) $user['company_id'] : null;
