@@ -14,7 +14,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = trim($_POST['name'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
-    $role = ($_POST['role'] ?? 'client') === 'admin' ? 'admin' : 'client';
 
     if ($name === '' || strlen($name) < 2) {
         $errors[] = 'Name must be at least 2 characters.';
@@ -36,15 +35,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = 'Email already exists.';
         } else {
             $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-            $insert = $pdo->prepare('INSERT INTO users (name, email, password, role) VALUES (:name, :email, :password, :role)');
-            $insert->execute([
-                'name' => $name,
-                'email' => $email,
-                'password' => $hashedPassword,
-                'role' => 'client',
-                'role' => $role,
-            ]);
-            redirect('/atms/auth/login.php');
+
+            try {
+                $pdo->beginTransaction();
+
+                $insert = $pdo->prepare('INSERT INTO users (name, email, password, role) VALUES (:name, :email, :password, :role)');
+                $insert->execute([
+                    'name' => $name,
+                    'email' => $email,
+                    'password' => $hashedPassword,
+                    'role' => 'client',
+                ]);
+
+                $userId = (int) $pdo->lastInsertId();
+                $linkRole = $pdo->prepare(
+                    'INSERT INTO user_roles (user_id, role_id)
+                     SELECT :user_id, r.id
+                     FROM roles r
+                     WHERE r.role_key = :role_key
+                     LIMIT 1'
+                );
+                $linkRole->execute([
+                    'user_id' => $userId,
+                    'role_key' => 'employee',
+                ]);
+
+                $pdo->commit();
+                redirect('/atms/auth/login.php');
+            } catch (Throwable $exception) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                $errors[] = 'Unable to create account right now. Please try again.';
+            }
         }
     }
 }
@@ -64,16 +87,6 @@ require_once __DIR__ . '/../includes/header.php';
         <input type="email" name="email" value="<?= e($_POST['email'] ?? '') ?>" required>
         <label>Password</label>
         <input type="password" name="password" required>
-        <input type="text" name="name" required>
-        <label>Email</label>
-        <input type="email" name="email" required>
-        <label>Password</label>
-        <input type="password" name="password" required>
-        <label>Role</label>
-        <select name="role">
-            <option value="client">Client</option>
-            <option value="admin">Admin</option>
-        </select>
         <button type="submit" class="btn">Register</button>
         <p>Have an account? <a href="/atms/auth/login.php">Login</a></p>
     </form>
