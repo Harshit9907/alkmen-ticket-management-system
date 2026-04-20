@@ -19,16 +19,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Please provide valid credentials.';
     } else {
         $stmt = $pdo->prepare('SELECT id, name, password, role, company_id, manager_id FROM users WHERE email = :email LIMIT 1');
+        $stmt = $pdo->prepare('SELECT id, company_id, name, password, role, must_reset_password, is_active FROM users WHERE email = :email LIMIT 1');
         $stmt->execute(['email' => $email]);
         $user = $stmt->fetch();
 
-        if ($user && password_verify($password, $user['password'])) {
+        if ($user && (int) $user['is_active'] === 1 && password_verify($password, $user['password'])) {
             $_SESSION['user_id'] = (int) $user['id'];
+            $_SESSION['company_id'] = $user['company_id'] === null ? null : (int) $user['company_id'];
             $_SESSION['name'] = $user['name'];
             $_SESSION['role'] = $user['role'];
             $_SESSION['company_id'] = $user['company_id'] !== null ? (int) $user['company_id'] : null;
             $_SESSION['manager_id'] = $user['manager_id'] !== null ? (int) $user['manager_id'] : null;
             redirect(currentDashboardRoute((string) $user['role']));
+
+            if ((int) $user['must_reset_password'] === 1) {
+                redirect('/atms/auth/reset_first_login.php');
+            }
+
+            redirect('/atms/index.php');
         }
 
         $error = 'Invalid email or password.';
@@ -47,7 +55,8 @@ require_once __DIR__ . '/../includes/header.php';
         <label>Password</label>
         <input type="password" name="password" required>
         <button type="submit" class="btn">Login</button>
-        <p>No account? <a href="/atms/auth/register.php">Register</a></p>
+        <p>No invite yet? Contact your company admin.</p>
+        <p><a href="/atms/auth/request_password_reset.php">Forgot password?</a></p>
     </form>
 </div>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
