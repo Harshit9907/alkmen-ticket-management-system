@@ -17,76 +17,270 @@ $pdoOptions = [
     PDO::ATTR_EMULATE_PREPARES => false,
 ];
 
-/**
- * Create database and schema automatically if it does not exist yet.
- */
-function bootstrapDatabase(PDO $serverPdo, string $databaseName): void
+final class MigrationException extends RuntimeException
 {
-    $serverPdo->exec("CREATE DATABASE IF NOT EXISTS `{$databaseName}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-    $serverPdo->exec("USE `{$databaseName}`");
+}
 
-    $sqlFile = __DIR__ . '/../database/atms.sql';
-    if (!is_file($sqlFile)) {
-        return;
-    }
+/**
+ * @return list<string>
+ */
+function splitSqlStatements(string $sql): array
+{
+    $statements = [];
+    $buffer = '';
+    $length = strlen($sql);
 
-    $sql = file_get_contents($sqlFile);
-    if ($sql === false) {
-        return;
-    }
+    $inSingleQuote = false;
+    $inDoubleQuote = false;
+    $inBacktick = false;
+    $inLineComment = false;
+    $inBlockComment = false;
+    $compoundDepth = 0;
+    $currentToken = '';
 
-    $statements = array_filter(array_map('trim', explode(';', $sql)));
-    foreach ($statements as $statement) {
-        if ($statement === '') {
+    for ($index = 0; $index < $length; $index++) {
+        $char = $sql[$index];
+        $next = $index + 1 < $length ? $sql[$index + 1] : '';
+
+        if ($inLineComment) {
+            $buffer .= $char;
+            if ($char === "\n") {
+                $inLineComment = false;
+            }
             continue;
         }
-        $serverPdo->exec($statement);
+
+        if ($inBlockComment) {
+            $buffer .= $char;
+            if ($char === '*' && $next === '/') {
+                $buffer .= $next;
+                $index++;
+                $inBlockComment = false;
+            }
+            continue;
+        }
+
+        if (!$inSingleQuote && !$inDoubleQuote && !$inBacktick) {
+            if ($char === '-' && $next === '-') {
+                $buffer .= $char . $next;
+                $index++;
+                $inLineComment = true;
+                continue;
+            }
+            if ($char === '#') {
+                $buffer .= $char;
+                $inLineComment = true;
+                continue;
+            }
+            if ($char === '/' && $next === '*') {
+                $buffer .= $char . $next;
+                $index++;
+                $inBlockComment = true;
+                continue;
+            }
+        }
+
+        if (!$inDoubleQuote && !$inBacktick && $char === '\'' && ($index === 0 || $sql[$index - 1] !== '\\')) {
+            $inSingleQuote = !$inSingleQuote;
+        } elseif (!$inSingleQuote && !$inBacktick && $char === '"' && ($index === 0 || $sql[$index - 1] !== '\\')) {
+            $inDoubleQuote = !$inDoubleQuote;
+        } elseif (!$inSingleQuote && !$inDoubleQuote && $char === '`') {
+            $inBacktick = !$inBacktick;
+        }
+
+        if (!$inSingleQuote && !$inDoubleQuote && !$inBacktick && ctype_alpha($char)) {
+            $currentToken .= strtoupper($char);
+        } else {
+            if ($currentToken !== '') {
+                if ($currentToken === 'BEGIN') {
+                    $compoundDepth++;
+                } elseif ($currentToken === 'END' && $compoundDepth > 0) {
+                    $compoundDepth--;
+                }
+                $currentToken = '';
+            }
+        }
+
+        if (!$inSingleQuote && !$inDoubleQuote && !$inBacktick && $compoundDepth === 0 && $char === ';') {
+            $trimmed = trim($buffer);
+            if ($trimmed !== '') {
+                $statements[] = $trimmed;
+            }
+            $buffer = '';
+            continue;
+        }
+
+        $buffer .= $char;
+    }
+
+    $tail = trim($buffer);
+    if ($tail !== '') {
+        $statements[] = $tail;
+    }
+
+    return $statements;
+}
+
+function ensureDatabaseExists(PDO $serverPdo, string $databaseName): void
+{
+    $serverPdo->exec("CREATE DATABASE IF NOT EXISTS `{$databaseName}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+}
+
+function ensureMigrationsTable(PDO $pdo): void
+{
+    $pdo->exec(
+        <<<'SQL'
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version VARCHAR(255) PRIMARY KEY,
+            status ENUM('success', 'failed') NOT NULL,
+            executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            error_message TEXT NULL
+        )
+        SQL
+    );
+}
+
+/**
+ * @return list<string>
+ */
+function discoverMigrations(string $directory): array
+{
+    if (!is_dir($directory)) {
+        throw new MigrationException('Migration directory not found: ' . $directory);
+    }
+
+    $files = glob($directory . '/*.sql');
+    if ($files === false) {
+        throw new MigrationException('Unable to read migration files from: ' . $directory);
+    }
+
+    sort($files, SORT_STRING);
+
+    return array_values($files);
+}
+
+function hasSuccessfulMigration(PDO $pdo, string $version): bool
+{
+    $stmt = $pdo->prepare('SELECT status FROM schema_migrations WHERE version = :version LIMIT 1');
+    $stmt->execute(['version' => $version]);
+    $result = $stmt->fetchColumn();
+
+    return $result === 'success';
+}
+
+function markMigrationStatus(PDO $pdo, string $version, string $status, ?string $errorMessage = null): void
+{
+    $stmt = $pdo->prepare(
+        'INSERT INTO schema_migrations (version, status, error_message) VALUES (:version, :status, :error_message)
+        ON DUPLICATE KEY UPDATE status = VALUES(status), executed_at = CURRENT_TIMESTAMP, error_message = VALUES(error_message)'
+    );
+    $stmt->execute([
+        'version' => $version,
+        'status' => $status,
+        'error_message' => $errorMessage,
+    ]);
+}
+
+function runMigrations(PDO $pdo, string $migrationsDirectory): void
+{
+    ensureMigrationsTable($pdo);
+    $migrationFiles = discoverMigrations($migrationsDirectory);
+
+    foreach ($migrationFiles as $migrationFile) {
+        $version = basename($migrationFile);
+        if (hasSuccessfulMigration($pdo, $version)) {
+            continue;
+        }
+
+        $sql = file_get_contents($migrationFile);
+        if ($sql === false) {
+            throw new MigrationException("Unable to read migration file: {$version}");
+        }
+
+        $statements = splitSqlStatements($sql);
+
+        try {
+            $pdo->beginTransaction();
+            foreach ($statements as $statement) {
+                $pdo->exec($statement);
+            }
+            markMigrationStatus($pdo, $version, 'success');
+            $pdo->commit();
+        } catch (Throwable $exception) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            markMigrationStatus($pdo, $version, 'failed', $exception->getMessage());
+            throw new MigrationException("Migration failed for {$version}: {$exception->getMessage()}", 0, $exception);
+        }
     }
 }
 
-try {
-    $pdo = new PDO(
-        "mysql:host={$host};dbname={$dbname};charset=utf8mb4",
-        $username,
-        $password,
-        $pdoOptions
-    );
-} catch (PDOException $exception) {
-    $errorCode = (int) ($exception->errorInfo[1] ?? 0);
-    $message = $exception->getMessage();
-    $isMissingDb = $errorCode === 1049
-        || str_contains($message, 'Unknown database')
-        || str_contains($message, '[1049]');
-    if (!$isMissingDb) {
-        die('Database connection failed: ' . $exception->getMessage());
-    }
-
+function connectWithBootstrap(string $host, string $dbname, string $username, string $password, array $pdoOptions): PDO
+{
     try {
-        $serverPdo = new PDO(
-            "mysql:host={$host};charset=utf8mb4",
-            $username,
-            $password,
-            $pdoOptions
-        );
-        bootstrapDatabase($serverPdo, $dbname);
         $pdo = new PDO(
             "mysql:host={$host};dbname={$dbname};charset=utf8mb4",
             $username,
             $password,
             $pdoOptions
         );
-    } catch (PDOException $bootstrapException) {
-        die('Database bootstrap failed: ' . $bootstrapException->getMessage());
+    } catch (PDOException $exception) {
+        $errorCode = (int) ($exception->errorInfo[1] ?? 0);
+        $message = $exception->getMessage();
+
+        $isCredentialIssue = in_array($errorCode, [1045, 1698], true)
+            || str_contains($message, 'Access denied for user');
+        if ($isCredentialIssue) {
+            die('Database credentials issue: unable to authenticate with MySQL. Please verify host, username, and password in atms/config/db.php.');
+        }
+
+        $isMissingDatabase = $errorCode === 1049 || str_contains($message, 'Unknown database');
+        if (!$isMissingDatabase) {
+            $isPermissionIssue = in_array($errorCode, [1044, 1142, 1227], true)
+                || str_contains($message, 'command denied')
+                || str_contains($message, 'permission denied');
+            if ($isPermissionIssue) {
+                die('Database permission issue: current MySQL user does not have sufficient privileges to access the database.');
+            }
+            die('Database connection failed: ' . $message);
+        }
+
+        try {
+            $serverPdo = new PDO(
+                "mysql:host={$host};charset=utf8mb4",
+                $username,
+                $password,
+                $pdoOptions
+            );
+            ensureDatabaseExists($serverPdo, $dbname);
+            $pdo = new PDO(
+                "mysql:host={$host};dbname={$dbname};charset=utf8mb4",
+                $username,
+                $password,
+                $pdoOptions
+            );
+        } catch (PDOException $bootstrapException) {
+            $bootstrapCode = (int) ($bootstrapException->errorInfo[1] ?? 0);
+            if (in_array($bootstrapCode, [1044, 1142, 1227], true)) {
+                die('Database permission issue: unable to create or modify the database with current MySQL privileges.');
+            }
+            die('Database bootstrap failed: ' . $bootstrapException->getMessage());
+        }
     }
-        [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false,
-        ]
-    );
-} catch (PDOException $exception) {
-    die('Database connection failed: ' . $exception->getMessage());
+
+    $migrationsDirectory = __DIR__ . '/../database/migrations';
+
+    try {
+        runMigrations($pdo, $migrationsDirectory);
+    } catch (MigrationException $exception) {
+        die('Database migration issue: ' . $exception->getMessage());
+    }
+
+    return $pdo;
 }
+
+$pdo = connectWithBootstrap($host, $dbname, $username, $password, $pdoOptions);
 
 function e(string $value): string
 {
