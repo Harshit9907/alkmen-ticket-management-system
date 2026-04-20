@@ -17,9 +17,6 @@ $pdoOptions = [
     PDO::ATTR_EMULATE_PREPARES => false,
 ];
 
-/**
- * Create database and schema automatically if it does not exist yet.
- */
 function bootstrapDatabase(PDO $serverPdo, string $databaseName): void
 {
     $serverPdo->exec("CREATE DATABASE IF NOT EXISTS `{$databaseName}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
@@ -37,48 +34,59 @@ function bootstrapDatabase(PDO $serverPdo, string $databaseName): void
 
     $statements = array_filter(array_map('trim', explode(';', $sql)));
     foreach ($statements as $statement) {
-        if ($statement === '') {
-            continue;
+        if ($statement !== '') {
+            $serverPdo->exec($statement);
         }
-        $serverPdo->exec($statement);
+    }
+}
+
+function ensureSchema(PDO $pdo): void
+{
+    $pdo->exec("ALTER TABLE users MODIFY role ENUM('super_admin', 'client_admin', 'manager', 'employee', 'admin', 'client') NOT NULL DEFAULT 'employee'");
+
+    $columns = [
+        'company_id' => 'ALTER TABLE users ADD COLUMN company_id INT UNSIGNED NULL AFTER role',
+        'manager_id' => 'ALTER TABLE users ADD COLUMN manager_id INT UNSIGNED NULL AFTER company_id',
+    ];
+
+    foreach ($columns as $name => $sql) {
+        $check = $pdo->prepare('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table_name AND COLUMN_NAME = :column_name');
+        $check->execute([
+            'table_name' => 'users',
+            'column_name' => $name,
+        ]);
+
+        if ((int) $check->fetchColumn() === 0) {
+            $pdo->exec($sql);
+        }
     }
 }
 
 try {
-    $pdo = new PDO(
-        "mysql:host={$host};dbname={$dbname};charset=utf8mb4",
-        $username,
-        $password,
-        $pdoOptions
-    );
+    $pdo = new PDO("mysql:host={$host};dbname={$dbname};charset=utf8mb4", $username, $password, $pdoOptions);
 } catch (PDOException $exception) {
     $errorCode = (int) ($exception->errorInfo[1] ?? 0);
     $message = $exception->getMessage();
     $isMissingDb = $errorCode === 1049
         || str_contains($message, 'Unknown database')
         || str_contains($message, '[1049]');
+    $isMissingDb = $errorCode === 1049 || str_contains($message, 'Unknown database') || str_contains($message, '[1049]');
+    $isMissingDb = $errorCode === 1049 || str_contains($exception->getMessage(), 'Unknown database');
+
     if (!$isMissingDb) {
         die('Database connection failed: ' . $exception->getMessage());
     }
 
     try {
-        $serverPdo = new PDO(
-            "mysql:host={$host};charset=utf8mb4",
-            $username,
-            $password,
-            $pdoOptions
-        );
+        $serverPdo = new PDO("mysql:host={$host};charset=utf8mb4", $username, $password, $pdoOptions);
         bootstrapDatabase($serverPdo, $dbname);
-        $pdo = new PDO(
-            "mysql:host={$host};dbname={$dbname};charset=utf8mb4",
-            $username,
-            $password,
-            $pdoOptions
-        );
+        $pdo = new PDO("mysql:host={$host};dbname={$dbname};charset=utf8mb4", $username, $password, $pdoOptions);
     } catch (PDOException $bootstrapException) {
         die('Database bootstrap failed: ' . $bootstrapException->getMessage());
     }
 }
+
+ensureSchema($pdo);
 
 function e(string $value): string
 {
@@ -96,11 +104,37 @@ function isLoggedIn(): bool
     return isset($_SESSION['user_id'], $_SESSION['role']);
 }
 
+function currentUserId(): int
+{
+    return (int) ($_SESSION['user_id'] ?? 0);
+}
+
+function currentCompanyId(): ?int
+{
+    $companyId = $_SESSION['company_id'] ?? null;
+    return $companyId === null ? null : (int) $companyId;
+}
+
 function requireRole(array $roles): void
 {
     if (!isLoggedIn() || !in_array($_SESSION['role'], $roles, true)) {
         redirect('/atms/index.php');
     }
+}
+
+function canManageTickets(): bool
+{
+    return in_array($_SESSION['role'] ?? '', ['client_admin', 'super_admin'], true);
+function canManageTicketActions(): bool
+{
+    return (($_SESSION['role'] ?? '') === 'super_admin');
+}
+
+function canClientRaiseOrReply(string $role): bool
+{
+    $explicitAllowedRoles = ['client_plus', 'client_support'];
+
+    return in_array($role, $explicitAllowedRoles, true);
 }
 
 function generateTicketId(PDO $pdo): string
@@ -161,4 +195,16 @@ function uploadFile(array $file): ?string
     }
 
     return $newName;
+}
+
+function logTicketEvent(PDO $pdo, int $ticketId, string $eventType, ?string $oldValue, ?string $newValue, int $actorId): void
+{
+    $stmt = $pdo->prepare('INSERT INTO ticket_events (ticket_id, event_type, old_value, new_value, actor_id) VALUES (:ticket_id, :event_type, :old_value, :new_value, :actor_id)');
+    $stmt->execute([
+        'ticket_id' => $ticketId,
+        'event_type' => $eventType,
+        'old_value' => $oldValue,
+        'new_value' => $newValue,
+        'actor_id' => $actorId,
+    ]);
 }
