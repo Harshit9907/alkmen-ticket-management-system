@@ -5,7 +5,11 @@ declare(strict_types=1);
 require_once __DIR__ . '/config/db.php';
 
 if (isLoggedIn()) {
-    $target = $_SESSION['role'] === 'admin' ? '/atms/admin/dashboard.php' : '/atms/client/dashboard.php';
+    $target = match ($_SESSION['role']) {
+        'super_admin' => '/atms/super_admin/companies.php',
+        'client_admin' => '/atms/admin/dashboard.php',
+        default => '/atms/client/dashboard.php',
+    };
     redirect($target);
 }
 
@@ -17,7 +21,7 @@ require_once __DIR__ . '/includes/header.php';
         <h2>Welcome to ATMS</h2>
         <p>Login to continue.</p>
         <a class="btn" href="/atms/auth/login.php">Login</a>
-        <a class="btn btn-outline" href="/atms/auth/register.php">Create Account</a>
+        <a class="btn btn-outline" href="/atms/auth/register.php">Register (Invite Only)</a>
     </div>
 </div>
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

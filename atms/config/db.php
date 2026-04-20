@@ -17,9 +17,6 @@ $pdoOptions = [
     PDO::ATTR_EMULATE_PREPARES => false,
 ];
 
-/**
- * Create database and schema automatically if it does not exist yet.
- */
 function bootstrapDatabase(PDO $serverPdo, string $databaseName): void
 {
     $serverPdo->exec("CREATE DATABASE IF NOT EXISTS `{$databaseName}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
@@ -37,10 +34,9 @@ function bootstrapDatabase(PDO $serverPdo, string $databaseName): void
 
     $statements = array_filter(array_map('trim', explode(';', $sql)));
     foreach ($statements as $statement) {
-        if ($statement === '') {
-            continue;
+        if ($statement !== '') {
+            $serverPdo->exec($statement);
         }
-        $serverPdo->exec($statement);
     }
 }
 
@@ -54,20 +50,14 @@ try {
 } catch (PDOException $exception) {
     $errorCode = (int) ($exception->errorInfo[1] ?? 0);
     $message = $exception->getMessage();
-    $isMissingDb = $errorCode === 1049
-        || str_contains($message, 'Unknown database')
-        || str_contains($message, '[1049]');
+    $isMissingDb = $errorCode === 1049 || str_contains($message, 'Unknown database') || str_contains($message, '[1049]');
+
     if (!$isMissingDb) {
         die('Database connection failed: ' . $exception->getMessage());
     }
 
     try {
-        $serverPdo = new PDO(
-            "mysql:host={$host};charset=utf8mb4",
-            $username,
-            $password,
-            $pdoOptions
-        );
+        $serverPdo = new PDO("mysql:host={$host};charset=utf8mb4", $username, $password, $pdoOptions);
         bootstrapDatabase($serverPdo, $dbname);
         $pdo = new PDO(
             "mysql:host={$host};dbname={$dbname};charset=utf8mb4",
@@ -78,14 +68,6 @@ try {
     } catch (PDOException $bootstrapException) {
         die('Database bootstrap failed: ' . $bootstrapException->getMessage());
     }
-        [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false,
-        ]
-    );
-} catch (PDOException $exception) {
-    die('Database connection failed: ' . $exception->getMessage());
 }
 
 function e(string $value): string
@@ -104,11 +86,27 @@ function isLoggedIn(): bool
     return isset($_SESSION['user_id'], $_SESSION['role']);
 }
 
+function currentUserId(): int
+{
+    return (int) ($_SESSION['user_id'] ?? 0);
+}
+
+function currentCompanyId(): ?int
+{
+    $companyId = $_SESSION['company_id'] ?? null;
+    return $companyId === null ? null : (int) $companyId;
+}
+
 function requireRole(array $roles): void
 {
     if (!isLoggedIn() || !in_array($_SESSION['role'], $roles, true)) {
         redirect('/atms/index.php');
     }
+}
+
+function canManageTickets(): bool
+{
+    return in_array($_SESSION['role'] ?? '', ['client_admin', 'super_admin'], true);
 }
 
 function generateTicketId(PDO $pdo): string

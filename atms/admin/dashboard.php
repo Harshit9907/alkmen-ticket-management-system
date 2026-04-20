@@ -3,23 +3,37 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/auth_check.php';
-requireRole(['admin']);
+requireRole(['client_admin', 'super_admin']);
 
-$total = (int) $pdo->query('SELECT COUNT(*) FROM tickets')->fetchColumn();
-$pending = (int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE status IN ('open', 'in_progress')")->fetchColumn();
-$resolved = (int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE status = 'resolved'")->fetchColumn();
+$companyFilter = '';
+$params = [];
+if ($_SESSION['role'] !== 'super_admin') {
+    $companyFilter = ' WHERE u.company_id = :company_id ';
+    $params['company_id'] = currentCompanyId();
+}
 
-$activity = $pdo->query(
-    "SELECT t.ticket_id, t.subject, t.status, t.created_at, u.name AS client_name
+$totalStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets t JOIN users u ON u.id = t.user_id {$companyFilter}");
+$totalStmt->execute($params);
+$total = (int) $totalStmt->fetchColumn();
+
+$pendingStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets t JOIN users u ON u.id = t.user_id {$companyFilter} " . ($companyFilter ? ' AND ' : ' WHERE ') . "t.status IN ('open', 'in_progress')");
+$pendingStmt->execute($params);
+$pending = (int) $pendingStmt->fetchColumn();
+
+$resolvedStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets t JOIN users u ON u.id = t.user_id {$companyFilter} " . ($companyFilter ? ' AND ' : ' WHERE ') . "t.status = 'resolved'");
+$resolvedStmt->execute($params);
+$resolved = (int) $resolvedStmt->fetchColumn();
+
+$activitySql = "SELECT t.ticket_id, t.subject, t.status, t.created_at, u.name AS client_name
      FROM tickets t
-     JOIN users u ON u.id = t.user_id
-     ORDER BY t.created_at DESC
-     LIMIT 8"
-)->fetchAll();
-
-$open = (int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE status = 'open'")->fetchColumn();
-$progress = (int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE status = 'in_progress'")->fetchColumn();
-$resolved = (int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE status = 'resolved'")->fetchColumn();
+     JOIN users u ON u.id = t.user_id";
+if ($companyFilter) {
+    $activitySql .= ' WHERE u.company_id = :company_id';
+}
+$activitySql .= ' ORDER BY t.created_at DESC LIMIT 8';
+$activityStmt = $pdo->prepare($activitySql);
+$activityStmt->execute($params);
+$activity = $activityStmt->fetchAll();
 
 $pageTitle = 'Admin Dashboard';
 require_once __DIR__ . '/../includes/header.php';
@@ -36,8 +50,8 @@ require_once __DIR__ . '/../includes/sidebar.php';
         <h2>Recent Activity</h2>
         <a class="btn" href="/atms/admin/tickets.php">Manage Tickets</a>
     </div>
-    <table data-sortable>
-        <thead><tr><th data-sort="text">Ticket</th><th data-sort="text">Client</th><th data-sort="text">Subject</th><th data-sort="text">Status</th><th data-sort="date">Created</th></tr></thead>
+    <table>
+        <thead><tr><th>Ticket</th><th>Client</th><th>Subject</th><th>Status</th><th>Created</th></tr></thead>
         <tbody>
         <?php if (!$activity): ?>
             <tr><td colspan="5" class="muted">No activity yet.</td></tr>
@@ -54,10 +68,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
         <?php endif; ?>
         </tbody>
     </table>
-<div class="grid cards-4">
-    <div class="card stat-card"><h3>Total</h3><p><?= $total ?></p></div>
-    <div class="card stat-card"><h3>Open</h3><p><?= $open ?></p></div>
-    <div class="card stat-card"><h3>In Progress</h3><p><?= $progress ?></p></div>
-    <div class="card stat-card"><h3>Resolved</h3><p><?= $resolved ?></p></div>
+</div>
+</div>
 </div>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
