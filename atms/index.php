@@ -3,10 +3,10 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/config/db.php';
+require_once __DIR__ . '/includes/dashboard_scope.php';
 
 if (isLoggedIn()) {
-    $target = $_SESSION['role'] === 'admin' ? '/atms/admin/dashboard.php' : '/atms/client/dashboard.php';
-    redirect($target);
+    redirect(currentDashboardRoute((string) $_SESSION['role']));
 }
 
 $pageTitle = 'ATMS Login';
