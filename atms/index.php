@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/config/db.php';
+require_once __DIR__ . '/includes/dashboard_scope.php';
 
 if (isLoggedIn()) {
+    redirect(currentDashboardRoute((string) $_SESSION['role']));
     $target = match ($_SESSION['role']) {
         'super_admin' => '/atms/super_admin/companies.php',
         'client_admin' => '/atms/admin/dashboard.php',

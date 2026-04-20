@@ -37,6 +37,15 @@ $currentPath = basename($_SERVER['PHP_SELF']);
         <p>Ticket System</p>
     </div>
     <nav>
+        <?php if (in_array($role, ['super_admin', 'admin'], true)): ?>
+            <a class="<?= $currentPath === 'dashboard.php' ? 'active' : '' ?>" href="/atms/super_admin/dashboard.php">Dashboard</a>
+            <a class="<?= $currentPath === 'tickets.php' ? 'active' : '' ?>" href="/atms/admin/tickets.php">Tickets</a>
+        <?php elseif ($role === 'client_admin'): ?>
+            <a class="<?= $currentPath === 'dashboard.php' ? 'active' : '' ?>" href="/atms/client_admin/dashboard.php">Dashboard</a>
+        <?php elseif ($role === 'manager'): ?>
+            <a class="<?= $currentPath === 'dashboard.php' ? 'active' : '' ?>" href="/atms/manager/dashboard.php">Dashboard</a>
+        <?php else: ?>
+            <a class="<?= $currentPath === 'dashboard.php' ? 'active' : '' ?>" href="/atms/employee/dashboard.php">Dashboard</a>
         <?php if (in_array($role, ['admin', 'super_admin'], true)): ?>
             <a class="<?= $currentPath === 'dashboard.php' ? 'active' : '' ?>" href="/atms/admin/dashboard.php">Dashboard</a>
             <a class="<?= $currentPath === 'tickets.php' ? 'active' : '' ?>" href="/atms/admin/tickets.php">Tickets</a>

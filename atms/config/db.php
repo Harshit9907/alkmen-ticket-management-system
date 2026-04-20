@@ -40,11 +40,36 @@ function bootstrapDatabase(PDO $serverPdo, string $databaseName): void
     }
 }
 
+function ensureSchema(PDO $pdo): void
+{
+    $pdo->exec("ALTER TABLE users MODIFY role ENUM('super_admin', 'client_admin', 'manager', 'employee', 'admin', 'client') NOT NULL DEFAULT 'employee'");
+
+    $columns = [
+        'company_id' => 'ALTER TABLE users ADD COLUMN company_id INT UNSIGNED NULL AFTER role',
+        'manager_id' => 'ALTER TABLE users ADD COLUMN manager_id INT UNSIGNED NULL AFTER company_id',
+    ];
+
+    foreach ($columns as $name => $sql) {
+        $check = $pdo->prepare('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table_name AND COLUMN_NAME = :column_name');
+        $check->execute([
+            'table_name' => 'users',
+            'column_name' => $name,
+        ]);
+
+        if ((int) $check->fetchColumn() === 0) {
+            $pdo->exec($sql);
+        }
+    }
+}
+
 try {
     $pdo = new PDO("mysql:host={$host};dbname={$dbname};charset=utf8mb4", $username, $password, $pdoOptions);
 } catch (PDOException $exception) {
     $errorCode = (int) ($exception->errorInfo[1] ?? 0);
     $message = $exception->getMessage();
+    $isMissingDb = $errorCode === 1049
+        || str_contains($message, 'Unknown database')
+        || str_contains($message, '[1049]');
     $isMissingDb = $errorCode === 1049 || str_contains($message, 'Unknown database') || str_contains($message, '[1049]');
     $isMissingDb = $errorCode === 1049 || str_contains($exception->getMessage(), 'Unknown database');
 
@@ -60,6 +85,8 @@ try {
         die('Database bootstrap failed: ' . $bootstrapException->getMessage());
     }
 }
+
+ensureSchema($pdo);
 
 function e(string $value): string
 {
