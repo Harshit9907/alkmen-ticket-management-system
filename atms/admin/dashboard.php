@@ -60,6 +60,30 @@ $activity = $activityStmt->fetchAll();
 
 requireRole(['admin', 'super_admin']);
 
+$companyId = (int) $_SESSION['company_id'];
+
+$totalStmt = $pdo->prepare('SELECT COUNT(*) FROM tickets WHERE company_id = :company_id');
+$totalStmt->execute(['company_id' => $companyId]);
+$total = (int) $totalStmt->fetchColumn();
+
+$pendingStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE company_id = :company_id AND status IN ('open', 'in_progress')");
+$pendingStmt->execute(['company_id' => $companyId]);
+$pending = (int) $pendingStmt->fetchColumn();
+
+$resolvedStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE company_id = :company_id AND status = 'resolved'");
+$resolvedStmt->execute(['company_id' => $companyId]);
+$resolved = (int) $resolvedStmt->fetchColumn();
+
+$activityStmt = $pdo->prepare(
+    "SELECT t.ticket_id, t.subject, t.status, t.created_at, u.name AS client_name
+     FROM tickets t
+     JOIN users u ON u.id = t.user_id AND u.company_id = t.company_id
+     WHERE t.company_id = :company_id
+     ORDER BY t.created_at DESC
+     LIMIT 8"
+);
+$activityStmt->execute(['company_id' => $companyId]);
+$activity = $activityStmt->fetchAll();
 $total = (int) $pdo->query('SELECT COUNT(*) FROM tickets')->fetchColumn();
 $pending = (int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE status IN ('open', 'in_progress')")->fetchColumn();
 $resolved = (int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE status = 'resolved'")->fetchColumn();

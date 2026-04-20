@@ -9,6 +9,7 @@ requireRole(['client_admin', 'super_admin']);
 $sessionUserId = (int) $_SESSION['user_id'];
 $sessionRole = (string) $_SESSION['role'];
 $ticketPk = (int) ($_GET['id'] ?? 0);
+$companyId = (int) $_SESSION['company_id'];
 $params = ['id' => $ticketPk];
 
 $sql = 'SELECT t.*, u.name AS client_name, a.name AS assignee_name, u.company_id
@@ -34,16 +35,24 @@ $ticketPk = (int) ($_GET['id'] ?? 0);
 $ticketStmt = $pdo->prepare(
     'SELECT t.*, u.name AS client_name, a.name AS assignee_name
      FROM tickets t
-     JOIN users u ON u.id = t.user_id
-     LEFT JOIN users a ON a.id = t.assigned_to
-     WHERE t.id = :id LIMIT 1'
+     JOIN users u ON u.id = t.user_id AND u.company_id = t.company_id
+     LEFT JOIN users a ON a.id = t.assigned_to AND a.company_id = t.company_id
+     WHERE t.id = :id AND t.company_id = :company_id
+     LIMIT 1'
 );
+$ticketStmt->execute([
+    'id' => $ticketPk,
+    'company_id' => $companyId,
+]);
 $ticketStmt->execute(['id' => $ticketPk]);
 $ticket = $ticketStmt->fetch();
 if (!$ticket) {
     redirect('/atms/client/my_tickets.php');
 }
 
+$adminsStmt = $pdo->prepare("SELECT id, name FROM users WHERE role = 'admin' AND company_id = :company_id ORDER BY name ASC");
+$adminsStmt->execute(['company_id' => $companyId]);
+$admins = $adminsStmt->fetchAll();
 $assignees = $pdo->query("SELECT id, name FROM users WHERE role IN ('admin', 'client_admin', 'manager') ORDER BY name ASC")->fetchAll();
 $adminsStmt = $pdo->prepare("SELECT id, name FROM users WHERE role = 'client_admin' AND company_id = :company_id ORDER BY name ASC");
 $adminsStmt->execute(['company_id' => (int) $ticket['company_id']]);
@@ -61,11 +70,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $assignTo = $sessionUserId;
     }
 
-    $update = $pdo->prepare('UPDATE tickets SET status = :status, assigned_to = :assigned_to WHERE id = :id');
+    $update = $pdo->prepare('UPDATE tickets SET status = :status, assigned_to = :assigned_to WHERE id = :id AND company_id = :company_id');
     $update->execute([
         'status' => $status,
         'assigned_to' => $assignTo,
         'id' => $ticketPk,
+        'company_id' => $companyId,
     ]);
 
     $message = trim($_POST['message'] ?? '');
@@ -167,8 +177,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$msgStmt = $pdo->prepare('SELECT m.*, u.role, u.name FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.ticket_id = :ticket_id ORDER BY m.created_at ASC');
-$msgStmt->execute(['ticket_id' => $ticketPk]);
+$msgStmt = $pdo->prepare(
+    'SELECT m.*, u.role, u.name
+     FROM messages m
+     JOIN tickets t ON t.id = m.ticket_id
+     JOIN users u ON u.id = m.sender_id AND u.company_id = t.company_id
+     WHERE m.ticket_id = :ticket_id
+       AND t.company_id = :company_id
+     ORDER BY m.created_at ASC'
+);
+$msgStmt->execute([
+    'ticket_id' => $ticketPk,
+    'company_id' => $companyId,
+]);
 $messages = $msgStmt->fetchAll();
 
 $eventStmt = $pdo->prepare('SELECT te.*, u.name AS actor_name FROM ticket_events te JOIN users u ON u.id = te.actor_id WHERE te.ticket_id = :ticket_id ORDER BY te.created_at DESC');
@@ -209,6 +230,26 @@ require_once __DIR__ . '/../includes/sidebar.php';
                 <?php endforeach; ?>
             </select>
         </div>
+
+        <div class="chat-box">
+            <?php foreach ($messages as $message): ?>
+                <div class="chat-message <?= $message['role'] === 'client' ? 'left' : 'right' ?>">
+                    <strong><?= e($message['name']) ?></strong>
+                    <p><?= nl2br(e($message['message'])) ?></p>
+                    <?php if (!empty($message['file'])): ?>
+                        <a href="/atms/assets/uploads/<?= e($message['file']) ?>" target="_blank">Open Attachment</a>
+                    <?php endif; ?>
+                    <small class="muted"><?= e(date('M d, Y h:i A', strtotime($message['created_at']))) ?></small>
+                </div>
+            <?php endforeach; ?>
+        </div>
+
+        <?php if ($error): ?><p class="alert-error"><?= e($error) ?></p><?php endif; ?>
+        <input type="text" name="message" placeholder="Reply to ticket...">
+        <input type="file" name="file">
+
+        <button type="submit" class="btn">Save Changes & Send Reply</button>
+    </form>
         <div>
             <label>Reply (optional)</label>
             <input type="text" name="message" placeholder="Reply to ticket...">

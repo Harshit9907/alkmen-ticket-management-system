@@ -9,6 +9,11 @@ requireRole(['client', 'client_plus', 'client_support']);
 $allowedSort = ['created_at', 'priority', 'status'];
 $sort = in_array($_GET['sort'] ?? 'created_at', $allowedSort, true) ? $_GET['sort'] : 'created_at';
 
+$stmt = $pdo->prepare("SELECT id, ticket_id, subject, status, priority, created_at FROM tickets WHERE user_id = :user_id AND company_id = :company_id ORDER BY {$sort} DESC");
+$stmt->execute([
+    'user_id' => (int) $_SESSION['user_id'],
+    'company_id' => (int) $_SESSION['company_id'],
+]);
 $sessionUserId = (int) $_SESSION['user_id'];
 $sessionRole = (string) $_SESSION['role'];
 $scope = buildTicketScopeFilter($pdo, $sessionUserId, $sessionRole, 't.user_id');

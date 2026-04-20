@@ -318,6 +318,14 @@ function runMigrations(PDO $pdo, string $migrationsDirectory): void
 function connectWithBootstrap(string $host, string $dbname, string $username, string $password, array $pdoOptions): PDO
 {
     try {
+        $serverPdo = new PDO(
+            "mysql:host={$host};charset=utf8mb4",
+            $username,
+            $password,
+            $pdoOptions
+        );
+        bootstrapDatabase($serverPdo, $dbname);
+
         $pdo = new PDO(
             "mysql:host={$host};dbname={$dbname};charset=utf8mb4",
             $username,
@@ -451,6 +459,19 @@ function requireRole(array $roles): void
     }
 }
 
+function syncSessionCompanyId(PDO $pdo): void
+{
+    if (!isset($_SESSION['user_id'])) {
+        return;
+    }
+
+    $stmt = $pdo->prepare('SELECT company_id FROM users WHERE id = :id LIMIT 1');
+    $stmt->execute(['id' => (int) $_SESSION['user_id']]);
+    $companyId = $stmt->fetchColumn();
+
+    if ($companyId !== false) {
+        $_SESSION['company_id'] = (int) $companyId;
+    }
 function hasPermission(string $permission): bool
 {
     return in_array($permission, $_SESSION['permissions'] ?? [], true);

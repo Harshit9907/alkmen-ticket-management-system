@@ -8,9 +8,14 @@ requireRole(['admin', 'super_admin']);
 
 $status = in_array($_GET['status'] ?? '', ['open', 'in_progress', 'resolved'], true) ? $_GET['status'] : '';
 $priority = in_array($_GET['priority'] ?? '', ['low', 'medium', 'high'], true) ? $_GET['priority'] : '';
+$companyId = (int) $_SESSION['company_id'];
 
 $query = 'SELECT t.id, t.ticket_id, t.subject, t.status, t.priority, t.created_at, t.sla_deadline, t.is_overdue, u.name, a.name AS assignee
           FROM tickets t
+          JOIN users u ON u.id = t.user_id AND u.company_id = t.company_id
+          LEFT JOIN users a ON a.id = t.assigned_to AND a.company_id = t.company_id
+          WHERE t.company_id = :company_id';
+$params = ['company_id' => $companyId];
           JOIN users u ON u.id = t.user_id
           LEFT JOIN users a ON a.id = t.assigned_to
           WHERE 1=1';

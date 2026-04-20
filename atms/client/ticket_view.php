@@ -9,6 +9,12 @@ requireRole(['client', 'client_plus', 'client_support']);
 $sessionUserId = (int) $_SESSION['user_id'];
 $sessionRole = (string) $_SESSION['role'];
 $ticketPk = (int) ($_GET['id'] ?? 0);
+$ticketStmt = $pdo->prepare('SELECT * FROM tickets WHERE id = :id AND user_id = :user_id AND company_id = :company_id LIMIT 1');
+$ticketStmt->execute([
+    'id' => $ticketPk,
+    'user_id' => (int) $_SESSION['user_id'],
+    'company_id' => (int) $_SESSION['company_id'],
+]);
 
 if ($ticketPk <= 0 || !canAccessTicket($pdo, $ticketPk, $sessionUserId, $sessionRole)) {
     redirect('/atms/client/my_tickets.php');
@@ -58,8 +64,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$msgStmt = $pdo->prepare('SELECT m.*, u.role, u.name FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.ticket_id = :ticket_id ORDER BY m.created_at ASC');
-$msgStmt->execute(['ticket_id' => $ticketPk]);
+$msgStmt = $pdo->prepare(
+    'SELECT m.*, u.role, u.name
+     FROM messages m
+     JOIN tickets t ON t.id = m.ticket_id
+     JOIN users u ON u.id = m.sender_id AND u.company_id = t.company_id
+     WHERE m.ticket_id = :ticket_id
+       AND t.company_id = :company_id
+     ORDER BY m.created_at ASC'
+);
+$msgStmt->execute([
+    'ticket_id' => $ticketPk,
+    'company_id' => (int) $_SESSION['company_id'],
+]);
 $messages = $msgStmt->fetchAll();
 
 $eventStmt = $pdo->prepare('SELECT te.*, u.name AS actor_name FROM ticket_events te JOIN users u ON u.id = te.actor_id WHERE te.ticket_id = :ticket_id ORDER BY te.created_at DESC');

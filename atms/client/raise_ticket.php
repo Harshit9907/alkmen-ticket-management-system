@@ -61,12 +61,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$errors) {
         $ticketId = generateTicketId($pdo);
         $ticketStmt = $pdo->prepare(
+            'INSERT INTO tickets (ticket_id, user_id, company_id, subject, description, category, priority, status) 
+             VALUES (:ticket_id, :user_id, :company_id, :subject, :description, :category, :priority, :status)'
             'INSERT INTO tickets (ticket_id, user_id, subject, description, category, priority, status)
              VALUES (:ticket_id, :user_id, :subject, :description, :category, :priority, :status)'
         );
         $ticketStmt = $pdo->prepare('INSERT INTO tickets (ticket_id, user_id, subject, description, category, priority, status) VALUES (:ticket_id, :user_id, :subject, :description, :category, :priority, :status)');
         $ticketStmt->execute([
             'ticket_id' => $ticketId,
+            'user_id' => (int) $_SESSION['user_id'],
+            'company_id' => (int) $_SESSION['company_id'],
             'user_id' => $targetUserId,
             'user_id' => currentUserId(),
             'subject' => $subject,
@@ -154,6 +158,10 @@ require_once __DIR__ . '/../includes/sidebar.php';
             <option value="medium">Medium</option>
             <option value="high">High</option>
         </select>
+
+        <label>Description</label>
+        <textarea name="description" rows="5" required><?= e($_POST['description'] ?? '') ?></textarea>
+
         <label>Attachment (optional)</label>
         <input type="file" name="file">
 

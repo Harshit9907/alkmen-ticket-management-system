@@ -46,6 +46,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (strtolower($invite['email']) !== strtolower($email)) {
             $errors[] = 'Invitation token does not match this email.';
         } else {
+            $companyStmt = $pdo->query("SELECT id FROM companies WHERE status = 'active' ORDER BY id ASC LIMIT 1");
+            $companyId = (int) ($companyStmt->fetchColumn() ?: 0);
+
+            if ($companyId === 0) {
+                $errors[] = 'No active company available for registration.';
+            } else {
+                $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+                $insert = $pdo->prepare('INSERT INTO users (name, email, password, role, company_id) VALUES (:name, :email, :password, :role, :company_id)');
+                $insert->execute([
+                    'name' => $name,
+                    'email' => $email,
+                    'password' => $hashedPassword,
+                    'role' => 'client',
+                    'company_id' => $companyId,
+                ]);
+                redirect('/atms/auth/login.php');
+            }
             $check = $pdo->prepare('SELECT id FROM users WHERE email = :email LIMIT 1');
             $check->execute(['email' => $email]);
 
