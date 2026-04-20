@@ -3,16 +3,19 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/auth_check.php';
-requireRole(['client']);
+require_once __DIR__ . '/../includes/dashboard_scope.php';
 
-$userId = (int) $_SESSION['user_id'];
+redirect(currentDashboardRoute((string) $_SESSION['role']));
+requireRole(['client', 'client_plus', 'client_support']);
+
+$userId = currentUserId();
 
 $totalStmt = $pdo->prepare('SELECT COUNT(*) FROM tickets WHERE user_id = :user_id');
 $totalStmt->execute(['user_id' => $userId]);
 $total = (int) $totalStmt->fetchColumn();
 
-$openStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE user_id = :user_id AND status IN ('open', 'in_progress')");
 $openStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE user_id = :user_id AND status = 'open'");
+$openStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE user_id = :user_id AND status IN ('open', 'in_progress')");
 $openStmt->execute(['user_id' => $userId]);
 $open = (int) $openStmt->fetchColumn();
 
@@ -34,25 +37,16 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <div class="card stat-card"><h3>Resolved Tickets</h3><p><?= $resolved ?></p></div>
 </div>
 
-<div class="card mt-16">
+<div class="card sub-card">
     <div class="table-header">
         <h2>Recent Tickets</h2>
         <a class="btn" href="/atms/client/raise_ticket.php">Raise Ticket</a>
     </div>
-    <table data-sortable>
-        <thead>
-            <tr>
-                <th data-sort="text">Ticket ID</th>
-                <th data-sort="text">Subject</th>
-                <th data-sort="text">Status</th>
-                <th data-sort="text">Priority</th>
-                <th data-sort="date">Created</th>
-                <th>Action</th>
-            </tr>
-        </thead>
+    <table>
+        <thead><tr><th>Ticket ID</th><th>Subject</th><th>Status</th><th>Priority</th><th>Created</th><th>Action</th></tr></thead>
         <tbody>
         <?php if (!$recentTickets): ?>
-            <tr><td colspan="6" class="muted">No tickets yet. Raise your first ticket.</td></tr>
+            <tr><td colspan="6" class="muted">No tickets yet.</td></tr>
         <?php else: ?>
             <?php foreach ($recentTickets as $ticket): ?>
                 <tr>
@@ -67,7 +61,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
         <?php endif; ?>
         </tbody>
     </table>
-    <div class="card stat-card"><h3>Open</h3><p><?= $open ?></p></div>
-    <div class="card stat-card"><h3>Resolved</h3><p><?= $resolved ?></p></div>
+</div>
+</div>
 </div>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
