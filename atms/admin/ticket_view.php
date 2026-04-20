@@ -74,6 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
     if ($error === '') {
+        redirect('/atms/admin/ticket_view.php?id=' . $ticketPk);
         $update = $pdo->prepare('UPDATE tickets SET status = :status, assigned_to = :assigned_to WHERE id = :id');
         $update->execute(['status' => $status, 'assigned_to' => $assignTo ?: null, 'id' => $ticketPk]);
 

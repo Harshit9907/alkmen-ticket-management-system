@@ -30,6 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!empty($_FILES['file']['name'])) {
         $uploadName = uploadFile($_FILES['file']);
         if ($uploadName === null) {
+            $errors[] = 'Invalid file or file upload failed. Allowed: jpg, jpeg, png, pdf, txt, doc, docx.';
             $errors[] = 'Invalid file type or upload failed.';
             $errors[] = 'Invalid file or upload failed.';
         }
@@ -37,6 +38,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$errors) {
         $ticketId = generateTicketId($pdo);
+        $ticketStmt = $pdo->prepare(
+            'INSERT INTO tickets (ticket_id, user_id, subject, description, category, priority, status)
+             VALUES (:ticket_id, :user_id, :subject, :description, :category, :priority, :status)'
+        );
         $ticketStmt = $pdo->prepare('INSERT INTO tickets (ticket_id, user_id, subject, description, category, priority, status) VALUES (:ticket_id, :user_id, :subject, :description, :category, :priority, :status)');
         $ticketStmt->execute([
             'ticket_id' => $ticketId,
@@ -72,6 +77,13 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <form method="POST" enctype="multipart/form-data">
         <label>Subject</label>
         <input type="text" name="subject" value="<?= e($_POST['subject'] ?? '') ?>" required>
+
+        <label>Category</label>
+        <select name="category" required>
+            <option value="General" <?= ($_POST['category'] ?? '') === 'General' ? 'selected' : '' ?>>General</option>
+            <option value="Technical" <?= ($_POST['category'] ?? '') === 'Technical' ? 'selected' : '' ?>>Technical</option>
+            <option value="Billing" <?= ($_POST['category'] ?? '') === 'Billing' ? 'selected' : '' ?>>Billing</option>
+            <option value="Account" <?= ($_POST['category'] ?? '') === 'Account' ? 'selected' : '' ?>>Account</option>
         <label>Description</label>
         <textarea name="description" rows="5" required><?= e($_POST['description'] ?? '') ?></textarea>
         <label>Category</label>
@@ -87,7 +99,17 @@ require_once __DIR__ . '/../includes/sidebar.php';
             <option value="Billing">Billing</option>
             <option value="Account">Account</option>
         </select>
+
         <label>Priority</label>
+        <select name="priority" required>
+            <option value="low" <?= ($_POST['priority'] ?? '') === 'low' ? 'selected' : '' ?>>Low</option>
+            <option value="medium" <?= ($_POST['priority'] ?? '') === 'medium' ? 'selected' : '' ?>>Medium</option>
+            <option value="high" <?= ($_POST['priority'] ?? '') === 'high' ? 'selected' : '' ?>>High</option>
+        </select>
+
+        <label>Description</label>
+        <textarea name="description" rows="5" required><?= e($_POST['description'] ?? '') ?></textarea>
+
         <select name="priority">
         <select name="priority" required <?= $canRaise ? '' : 'disabled' ?>>
             <option value="low">Low</option>
@@ -96,6 +118,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
         </select>
         <label>Attachment (optional)</label>
         <input type="file" name="file">
+
         <button type="submit" class="btn">Submit Ticket</button>
         <label>Description</label>
         <textarea name="description" rows="5" required <?= $canRaise ? '' : 'disabled' ?>><?= e($_POST['description'] ?? '') ?></textarea>
