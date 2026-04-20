@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS users (
     name VARCHAR(120) NOT NULL,
     email VARCHAR(160) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
+    role ENUM('admin', 'client_admin', 'manager', 'client') NOT NULL DEFAULT 'client',
     role ENUM('super_admin', 'client_admin', 'manager', 'employee', 'admin', 'client') NOT NULL DEFAULT 'employee',
     company_id INT UNSIGNED NULL,
     manager_id INT UNSIGNED NULL,
@@ -76,6 +77,16 @@ CREATE TABLE IF NOT EXISTS password_resets (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS manager_client_map (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    manager_id INT UNSIGNED NOT NULL,
+    user_id INT UNSIGNED NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_manager_user (manager_id, user_id),
+    CONSTRAINT fk_map_manager FOREIGN KEY (manager_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_map_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS tickets (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     ticket_id VARCHAR(20) NOT NULL UNIQUE,
@@ -104,6 +115,20 @@ CREATE TABLE IF NOT EXISTS messages (
     CONSTRAINT fk_messages_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+INSERT INTO users (name, email, password, role) VALUES
+('ATMS Admin', 'admin@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'admin'),
+('ATMS Client Admin', 'clientadmin@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'client_admin'),
+('ATMS Manager', 'manager@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'manager'),
+('John Client', 'john.client@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'client'),
+('Maya Client', 'maya.client@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'client')
+ON DUPLICATE KEY UPDATE email = VALUES(email), role = VALUES(role), name = VALUES(name);
+
+INSERT INTO manager_client_map (manager_id, user_id)
+SELECT m.id, c.id
+FROM users m
+JOIN users c ON c.email IN ('john.client@alkmen.com', 'maya.client@alkmen.com')
+WHERE m.email = 'manager@alkmen.com'
+ON DUPLICATE KEY UPDATE manager_id = VALUES(manager_id);
 INSERT INTO users (name, email, password, role, company_id, manager_id) VALUES
 ('ATMS Super Admin', 'superadmin@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'super_admin', 1, NULL),
 ('Acme Client Admin', 'clientadmin@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'client_admin', 1, NULL),

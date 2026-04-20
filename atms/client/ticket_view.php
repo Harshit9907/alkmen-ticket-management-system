@@ -3,9 +3,19 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/auth_check.php';
+requireRole(['client', 'manager', 'admin', 'client_admin']);
 requireRole(['client', 'client_plus', 'client_support']);
 
+$sessionUserId = (int) $_SESSION['user_id'];
+$sessionRole = (string) $_SESSION['role'];
 $ticketPk = (int) ($_GET['id'] ?? 0);
+
+if ($ticketPk <= 0 || !canAccessTicket($pdo, $ticketPk, $sessionUserId, $sessionRole)) {
+    redirect('/atms/client/my_tickets.php');
+}
+
+$ticketStmt = $pdo->prepare('SELECT t.*, u.name AS client_name FROM tickets t JOIN users u ON u.id = t.user_id WHERE t.id = :id LIMIT 1');
+$ticketStmt->execute(['id' => $ticketPk]);
 $ticketStmt = $pdo->prepare('SELECT * FROM tickets WHERE id = :id AND user_id = :user_id LIMIT 1');
 $ticketStmt->execute(['id' => $ticketPk, 'user_id' => currentUserId()]);
 $ticket = $ticketStmt->fetch();
@@ -39,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $insertMsg = $pdo->prepare('INSERT INTO messages (ticket_id, sender_id, message, file) VALUES (:ticket_id, :sender_id, :message, :file)');
         $insertMsg->execute([
             'ticket_id' => $ticketPk,
+            'sender_id' => $sessionUserId,
             'sender_id' => currentUserId(),
             'message' => $message !== '' ? $message : 'Shared an attachment.',
             'file' => $file,
@@ -61,6 +72,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
 ?>
 <div class="card">
     <h2><?= e($ticket['subject']) ?> (<?= e($ticket['ticket_id']) ?>)</h2>
+    <p class="muted">Client: <?= e($ticket['client_name']) ?> | Category: <?= e($ticket['category']) ?> | Status: <span class="<?= badgeClass($ticket['status']) ?>"><?= e(ucwords(str_replace('_', ' ', $ticket['status']))) ?></span></p>
     <p class="muted">Category: <?= e($ticket['category']) ?> | Status: <span class="<?= badgeClass($ticket['status']) ?>"><?= e(ucwords(str_replace('_', ' ', $ticket['status']))) ?></span></p>
     <p class="muted">SLA Deadline: <?= $ticket['sla_deadline'] ? e(date('M d, Y h:i A', strtotime($ticket['sla_deadline']))) : 'Not set' ?> | Overdue: <?= $ticket['is_overdue'] ? 'Yes' : 'No' ?></p>
     <p><?= e($ticket['description']) ?></p>

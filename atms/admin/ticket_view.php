@@ -3,8 +3,11 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/auth_check.php';
+requireRole(['admin', 'manager', 'client_admin']);
 requireRole(['client_admin', 'super_admin']);
 
+$sessionUserId = (int) $_SESSION['user_id'];
+$sessionRole = (string) $_SESSION['role'];
 $ticketPk = (int) ($_GET['id'] ?? 0);
 $params = ['id' => $ticketPk];
 
@@ -23,6 +26,10 @@ $ticketStmt = $pdo->prepare($sql);
 $ticketStmt->execute($params);
 requireRole(['admin', 'super_admin']);
 
+if ($ticketPk <= 0 || !canAccessTicket($pdo, $ticketPk, $sessionUserId, $sessionRole)) {
+    redirect('/atms/client/my_tickets.php');
+}
+
 $ticketPk = (int) ($_GET['id'] ?? 0);
 $ticketStmt = $pdo->prepare(
     'SELECT t.*, u.name AS client_name, a.name AS assignee_name
@@ -34,9 +41,10 @@ $ticketStmt = $pdo->prepare(
 $ticketStmt->execute(['id' => $ticketPk]);
 $ticket = $ticketStmt->fetch();
 if (!$ticket) {
-    redirect('/atms/admin/tickets.php');
+    redirect('/atms/client/my_tickets.php');
 }
 
+$assignees = $pdo->query("SELECT id, name FROM users WHERE role IN ('admin', 'client_admin', 'manager') ORDER BY name ASC")->fetchAll();
 $adminsStmt = $pdo->prepare("SELECT id, name FROM users WHERE role = 'client_admin' AND company_id = :company_id ORDER BY name ASC");
 $adminsStmt->execute(['company_id' => (int) $ticket['company_id']]);
 $admins = $adminsStmt->fetchAll();
@@ -47,6 +55,19 @@ $canAct = canManageTicketActions();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $status = in_array($_POST['status'] ?? '', ['open', 'in_progress', 'resolved'], true) ? $_POST['status'] : $ticket['status'];
     $assignTo = (int) ($_POST['assigned_to'] ?? 0);
+    $validAssigneeIds = array_map(static fn(array $u): int => (int) $u['id'], $assignees);
+
+    if (!in_array($assignTo, $validAssigneeIds, true)) {
+        $assignTo = $sessionUserId;
+    }
+
+    $update = $pdo->prepare('UPDATE tickets SET status = :status, assigned_to = :assigned_to WHERE id = :id');
+    $update->execute([
+        'status' => $status,
+        'assigned_to' => $assignTo,
+        'id' => $ticketPk,
+    ]);
+
     $message = trim($_POST['message'] ?? '');
     $file = null;
 
@@ -72,6 +93,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$isValidAdmin) {
             $assignTo = (int) ($ticket['assigned_to'] ?? 0);
         }
+    }
+
+    if ($error === '' && ($message !== '' || $file !== null)) {
+        $insertMsg = $pdo->prepare('INSERT INTO messages (ticket_id, sender_id, message, file) VALUES (:ticket_id, :sender_id, :message, :file)');
+        $insertMsg->execute([
+            'ticket_id' => $ticketPk,
+            'sender_id' => $sessionUserId,
+            'message' => $message !== '' ? $message : 'Shared an attachment.',
+            'file' => $file,
+        ]);
+    }
+
+    if ($error === '') {
+        redirect('/atms/admin/ticket_view.php?id=' . $ticketPk);
 
     if ($error === '') {
         redirect('/atms/admin/ticket_view.php?id=' . $ticketPk);
@@ -163,6 +198,10 @@ require_once __DIR__ . '/../includes/sidebar.php';
         <div>
             <label>Assign Ticket</label>
             <select name="assigned_to">
+                <?php foreach ($assignees as $assignee): ?>
+                    <option value="<?= (int) $assignee['id'] ?>" <?= (int) $ticket['assigned_to'] === (int) $assignee['id'] ? 'selected' : '' ?>>
+                        <?= e($assignee['name']) ?>
+                    </option>
                 <option value="0">Unassigned</option>
             <select name="assigned_to" <?= $canAct ? '' : 'disabled' ?>>
                 <?php foreach ($admins as $admin): ?>
@@ -170,6 +209,15 @@ require_once __DIR__ . '/../includes/sidebar.php';
                 <?php endforeach; ?>
             </select>
         </div>
+        <div>
+            <label>Reply (optional)</label>
+            <input type="text" name="message" placeholder="Reply to ticket...">
+        </div>
+        <div>
+            <label>Attachment (optional)</label>
+            <input type="file" name="file">
+        </div>
+        <?php if ($error): ?><p class="alert-error"><?= e($error) ?></p><?php endif; ?>
         <button type="submit" class="btn">Save Changes</button>
         <div>
             <label>SLA Deadline</label>
