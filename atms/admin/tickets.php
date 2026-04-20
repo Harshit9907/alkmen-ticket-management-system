@@ -7,14 +7,14 @@ requireRole(['admin']);
 
 $status = in_array($_GET['status'] ?? '', ['open', 'in_progress', 'resolved'], true) ? $_GET['status'] : '';
 $priority = in_array($_GET['priority'] ?? '', ['low', 'medium', 'high'], true) ? $_GET['priority'] : '';
+$companyId = (int) $_SESSION['company_id'];
 
 $query = 'SELECT t.id, t.ticket_id, t.subject, t.status, t.priority, t.created_at, u.name, a.name AS assignee
           FROM tickets t
-          JOIN users u ON u.id = t.user_id
-          LEFT JOIN users a ON a.id = t.assigned_to
-          WHERE 1=1';
-$query = 'SELECT t.id, t.ticket_id, t.subject, t.status, t.priority, t.created_at, u.name FROM tickets t JOIN users u ON u.id = t.user_id WHERE 1=1';
-$params = [];
+          JOIN users u ON u.id = t.user_id AND u.company_id = t.company_id
+          LEFT JOIN users a ON a.id = t.assigned_to AND a.company_id = t.company_id
+          WHERE t.company_id = :company_id';
+$params = ['company_id' => $companyId];
 
 if ($status !== '') {
     $query .= ' AND t.status = :status';
@@ -37,7 +37,6 @@ require_once __DIR__ . '/../includes/sidebar.php';
 <div class="card">
     <div class="table-header">
         <h2>Tickets Management</h2>
-        <h2>Tickets</h2>
         <form method="GET" class="filters">
             <select name="status">
                 <option value="">All Status</option>
@@ -73,20 +72,6 @@ require_once __DIR__ . '/../includes/sidebar.php';
                 </tr>
             <?php endforeach; ?>
         <?php endif; ?>
-    <table>
-        <thead><tr><th>Ticket ID</th><th>Client</th><th>Subject</th><th>Status</th><th>Priority</th><th>Date</th><th>Action</th></tr></thead>
-        <tbody>
-        <?php foreach ($tickets as $ticket): ?>
-            <tr>
-                <td><?= e($ticket['ticket_id']) ?></td>
-                <td><?= e($ticket['name']) ?></td>
-                <td><?= e($ticket['subject']) ?></td>
-                <td><span class="<?= badgeClass($ticket['status']) ?>"><?= e(ucwords(str_replace('_', ' ', $ticket['status']))) ?></span></td>
-                <td><span class="<?= priorityClass($ticket['priority']) ?>"><?= e(ucfirst($ticket['priority'])) ?></span></td>
-                <td><?= e(date('M d, Y', strtotime($ticket['created_at']))) ?></td>
-                <td><a href="/atms/admin/ticket_view.php?id=<?= (int) $ticket['id'] ?>">View</a></td>
-            </tr>
-        <?php endforeach; ?>
         </tbody>
     </table>
 </div>

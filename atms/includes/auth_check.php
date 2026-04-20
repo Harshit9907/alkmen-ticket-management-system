@@ -7,3 +7,5 @@ require_once __DIR__ . '/../config/db.php';
 if (!isLoggedIn()) {
     redirect('/atms/index.php');
 }
+
+syncSessionCompanyId($pdo);

@@ -57,6 +57,7 @@ try {
     $isMissingDb = $errorCode === 1049
         || str_contains($message, 'Unknown database')
         || str_contains($message, '[1049]');
+
     if (!$isMissingDb) {
         die('Database connection failed: ' . $exception->getMessage());
     }
@@ -69,6 +70,7 @@ try {
             $pdoOptions
         );
         bootstrapDatabase($serverPdo, $dbname);
+
         $pdo = new PDO(
             "mysql:host={$host};dbname={$dbname};charset=utf8mb4",
             $username,
@@ -78,14 +80,6 @@ try {
     } catch (PDOException $bootstrapException) {
         die('Database bootstrap failed: ' . $bootstrapException->getMessage());
     }
-        [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false,
-        ]
-    );
-} catch (PDOException $exception) {
-    die('Database connection failed: ' . $exception->getMessage());
 }
 
 function e(string $value): string
@@ -108,6 +102,21 @@ function requireRole(array $roles): void
 {
     if (!isLoggedIn() || !in_array($_SESSION['role'], $roles, true)) {
         redirect('/atms/index.php');
+    }
+}
+
+function syncSessionCompanyId(PDO $pdo): void
+{
+    if (!isset($_SESSION['user_id'])) {
+        return;
+    }
+
+    $stmt = $pdo->prepare('SELECT company_id FROM users WHERE id = :id LIMIT 1');
+    $stmt->execute(['id' => (int) $_SESSION['user_id']]);
+    $companyId = $stmt->fetchColumn();
+
+    if ($companyId !== false) {
+        $_SESSION['company_id'] = (int) $companyId;
     }
 }
 
