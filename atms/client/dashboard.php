@@ -3,28 +3,62 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/auth_check.php';
-requireRole(['client']);
+requireRole(['client', 'manager', 'admin', 'client_admin']);
 
 $userId = (int) $_SESSION['user_id'];
+$companyId = (int) $_SESSION['company_id'];
 
-$totalStmt = $pdo->prepare('SELECT COUNT(*) FROM tickets WHERE user_id = :user_id');
-$totalStmt->execute(['user_id' => $userId]);
+$totalStmt = $pdo->prepare('SELECT COUNT(*) FROM tickets WHERE user_id = :user_id AND company_id = :company_id');
+$totalStmt->execute(['user_id' => $userId, 'company_id' => $companyId]);
 $total = (int) $totalStmt->fetchColumn();
 
-$openStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE user_id = :user_id AND status IN ('open', 'in_progress')");
+$openStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE user_id = :user_id AND company_id = :company_id AND status IN ('open', 'in_progress')");
+$openStmt->execute(['user_id' => $userId, 'company_id' => $companyId]);
+$open = (int) $openStmt->fetchColumn();
+
+$resolvedStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE user_id = :user_id AND company_id = :company_id AND status = 'resolved'");
+$resolvedStmt->execute(['user_id' => $userId, 'company_id' => $companyId]);
+$resolved = (int) $resolvedStmt->fetchColumn();
+
+$recentStmt = $pdo->prepare('SELECT id, ticket_id, subject, status, priority, created_at FROM tickets WHERE user_id = :user_id AND company_id = :company_id ORDER BY created_at DESC LIMIT 5');
+$recentStmt->execute(['user_id' => $userId, 'company_id' => $companyId]);
+$sessionUserId = (int) $_SESSION['user_id'];
+$sessionRole = (string) $_SESSION['role'];
+$scope = buildTicketScopeFilter($pdo, $sessionUserId, $sessionRole, 't.user_id');
+require_once __DIR__ . '/../includes/dashboard_scope.php';
+
+redirect(currentDashboardRoute((string) $_SESSION['role']));
+requireRole(['client', 'client_plus', 'client_support']);
+
+$userId = currentUserId();
+
+$totalStmt = $pdo->prepare('SELECT COUNT(*) FROM tickets t WHERE ' . $scope['sql']);
+$totalStmt->execute($scope['params']);
+$total = (int) $totalStmt->fetchColumn();
+
+$openStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets t WHERE {$scope['sql']} AND t.status = 'open'");
+$openStmt->execute($scope['params']);
 $openStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE user_id = :user_id AND status = 'open'");
+$openStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE user_id = :user_id AND status IN ('open', 'in_progress')");
 $openStmt->execute(['user_id' => $userId]);
 $open = (int) $openStmt->fetchColumn();
 
-$resolvedStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE user_id = :user_id AND status = 'resolved'");
-$resolvedStmt->execute(['user_id' => $userId]);
+$resolvedStmt = $pdo->prepare("SELECT COUNT(*) FROM tickets t WHERE {$scope['sql']} AND t.status = 'resolved'");
+$resolvedStmt->execute($scope['params']);
 $resolved = (int) $resolvedStmt->fetchColumn();
 
-$recentStmt = $pdo->prepare('SELECT id, ticket_id, subject, status, priority, created_at FROM tickets WHERE user_id = :user_id ORDER BY created_at DESC LIMIT 5');
-$recentStmt->execute(['user_id' => $userId]);
+$recentStmt = $pdo->prepare(
+    'SELECT t.id, t.ticket_id, t.subject, t.status, t.priority, t.created_at, u.name AS client_name
+     FROM tickets t
+     JOIN users u ON u.id = t.user_id
+     WHERE ' . $scope['sql'] . '
+     ORDER BY t.created_at DESC
+     LIMIT 5'
+);
+$recentStmt->execute($scope['params']);
 $recentTickets = $recentStmt->fetchAll();
 
-$pageTitle = 'Client Dashboard';
+$pageTitle = 'Scoped Dashboard';
 require_once __DIR__ . '/../includes/header.php';
 require_once __DIR__ . '/../includes/sidebar.php';
 ?>
@@ -34,15 +68,29 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <div class="card stat-card"><h3>Resolved Tickets</h3><p><?= $resolved ?></p></div>
 </div>
 
+<?php if (hasPermission('roles.manage') || hasPermission('users.manage')): ?>
 <div class="card mt-16">
     <div class="table-header">
-        <h2>Recent Tickets</h2>
-        <a class="btn" href="/atms/client/raise_ticket.php">Raise Ticket</a>
+        <h2>Roles Management</h2>
+    </div>
+    <?php if (hasPermission('users.manage')): ?><a class="btn" href="/atms/client/users.php">Manage Users</a><?php endif; ?>
+    <?php if (hasPermission('roles.manage')): ?><a class="btn" href="/atms/client/roles.php">Manage Roles</a><?php endif; ?>
+</div>
+<?php endif; ?>
+
+<div class="card mt-16">
+<div class="card sub-card">
+    <div class="table-header">
+        <h2>Recent Scoped Tickets</h2>
+        <?php if ($sessionRole === 'client'): ?>
+            <a class="btn" href="/atms/client/raise_ticket.php">Raise Ticket</a>
+        <?php endif; ?>
     </div>
     <table data-sortable>
         <thead>
             <tr>
                 <th data-sort="text">Ticket ID</th>
+                <th data-sort="text">Client</th>
                 <th data-sort="text">Subject</th>
                 <th data-sort="text">Status</th>
                 <th data-sort="text">Priority</th>
@@ -52,11 +100,17 @@ require_once __DIR__ . '/../includes/sidebar.php';
         </thead>
         <tbody>
         <?php if (!$recentTickets): ?>
-            <tr><td colspan="6" class="muted">No tickets yet. Raise your first ticket.</td></tr>
+            <tr><td colspan="7" class="muted">No tickets in your visibility scope.</td></tr>
+    <table>
+        <thead><tr><th>Ticket ID</th><th>Subject</th><th>Status</th><th>Priority</th><th>Created</th><th>Action</th></tr></thead>
+        <tbody>
+        <?php if (!$recentTickets): ?>
+            <tr><td colspan="6" class="muted">No tickets yet.</td></tr>
         <?php else: ?>
             <?php foreach ($recentTickets as $ticket): ?>
                 <tr>
                     <td><?= e($ticket['ticket_id']) ?></td>
+                    <td><?= e($ticket['client_name']) ?></td>
                     <td><?= e($ticket['subject']) ?></td>
                     <td><span class="<?= badgeClass($ticket['status']) ?>"><?= e(ucwords(str_replace('_', ' ', $ticket['status']))) ?></span></td>
                     <td><span class="<?= priorityClass($ticket['priority']) ?>"><?= e(ucfirst($ticket['priority'])) ?></span></td>
@@ -67,7 +121,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
         <?php endif; ?>
         </tbody>
     </table>
-    <div class="card stat-card"><h3>Open</h3><p><?= $open ?></p></div>
-    <div class="card stat-card"><h3>Resolved</h3><p><?= $resolved ?></p></div>
+</div>
+</div>
 </div>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

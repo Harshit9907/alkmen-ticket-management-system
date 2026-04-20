@@ -1,47 +1,65 @@
 # Alkmen Ticket Management System (ATMS)
 
-A production-ready, minimal SaaS-style ticket management system built with core PHP and MySQL.
+A minimal SaaS-style ticket management system built with core PHP and MySQL.
 
 ## Stack
 - Core PHP (no framework)
-- MySQL via PDO prepared statements
+- MySQL with PDO prepared statements
 - HTML, CSS, JavaScript
 
-## Local Setup (XAMPP / MAMP)
-1. Copy this repository to your web root (e.g., `htdocs`).
-2. Import `atms/database/atms.sql` into MySQL.
-3. Confirm DB credentials in `atms/config/db.php`.
-4. Open `http://localhost/atms/index.php`.
+## Project Structure
+- `atms/config/` → application configuration (including DB bootstrap + migrations)
+- `atms/database/migrations/` → ordered versioned SQL migrations (`*.sql`)
+- `atms/admin/`, `atms/client/`, `atms/auth/` → role-based modules
+
+## Exact XAMPP Setup (Windows)
+1. Install XAMPP and start **Apache** + **MySQL** from XAMPP Control Panel.
+2. Copy this repo to:
+   - `C:\xampp\htdocs\alkmen-ticket-management-system`
+3. Open:
+   - `C:\xampp\php\php.ini`
+   - Confirm `extension=pdo_mysql` is enabled (remove leading `;` if present).
+4. (Optional) Create DB user in phpMyAdmin if not using default root user.
+5. Update DB credentials in `atms/config/db.php` if needed:
+   - `$host`, `$dbname`, `$username`, `$password`
+6. Open app URL:
+   - `http://localhost/alkmen-ticket-management-system/atms/index.php`
+
+## Migration Flow (Versioned)
+ATMS now runs versioned SQL migrations automatically at startup.
+
+### What happens on startup
+1. App connects to MySQL.
+2. If DB `atms` is missing, app creates it.
+3. App ensures `schema_migrations` table exists.
+4. App scans `atms/database/migrations/*.sql` in lexical order.
+5. Each not-yet-successful migration is executed and logged.
+
+### Migration log table
+`schema_migrations` tracks:
+- `version` (migration filename, PK)
+- `status` (`success` / `failed`)
+- `executed_at`
+- `error_message`
+
+### Add a new migration
+1. Create next file in `atms/database/migrations/`:
+   - Example: `003_add_ticket_indexes.sql`
+2. Put SQL in that file.
+3. Refresh the app once; migration will run automatically.
+4. Verify from phpMyAdmin:
+   ```sql
+   SELECT * FROM schema_migrations ORDER BY executed_at DESC;
+   ```
+
+## Startup Failure Messages
+Startup now gives explicit failure category:
+- **Credentials issue** → wrong host/user/password
+- **Permission issue** → DB user lacks required privileges
+- **Migration issue** → SQL in migration failed
 
 ## Default Accounts
 - **Admin**: `admin@alkmen.com` / `admin123`
-- **Sample Clients**:
+- **Clients**:
   - `john.client@alkmen.com` / `admin123`
   - `maya.client@alkmen.com` / `admin123`
-
-## Included Seed Data
-- Default admin + sample clients
-- Sample tickets and messages
-- Ready-to-use dashboard metrics and ticket history
-A minimal, production-ready ticket management application built with core PHP, MySQL, HTML/CSS, and JavaScript.
-
-## Stack
-- Core PHP (no framework)
-- MySQL (PDO prepared statements)
-- HTML/CSS/JS
-
-## Project Path
-Application code lives in `atms/` with modular directories for config, auth, client, admin, includes, assets, and database.
-
-## Setup (XAMPP / MAMP)
-1. Place this repository in your web root (e.g. `htdocs`).
-2. Create database and tables:
-   - Import `atms/database/atms.sql` in phpMyAdmin, or run via CLI.
-3. Update DB credentials in `atms/config/db.php` if needed.
-4. Open: `http://localhost/atms/index.php`.
-
-## Default admin
-- Email: `admin@atms.local`
-- Password: `Admin@123`
-
-> Password hash is pre-seeded in SQL for quick local startup.
