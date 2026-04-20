@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     name VARCHAR(120) NOT NULL,
     email VARCHAR(160) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
-    role ENUM('admin', 'client') NOT NULL DEFAULT 'client',
+    role ENUM('super_admin', 'admin', 'client', 'client_plus', 'client_support') NOT NULL DEFAULT 'client',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS tickets (
     priority ENUM('low', 'medium', 'high') NOT NULL DEFAULT 'low',
     status ENUM('open', 'in_progress', 'resolved') NOT NULL DEFAULT 'open',
     assigned_to INT UNSIGNED NULL,
+    sla_deadline DATETIME NULL,
+    is_overdue TINYINT(1) NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_tickets_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_tickets_admin FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL
@@ -36,36 +38,26 @@ CREATE TABLE IF NOT EXISTS messages (
     CONSTRAINT fk_messages_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS ticket_events (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    ticket_id INT UNSIGNED NOT NULL,
+    event_type ENUM('status_change', 'assignment_change') NOT NULL,
+    old_value VARCHAR(255) NULL,
+    new_value VARCHAR(255) NULL,
+    actor_id INT UNSIGNED NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_ticket_events_ticket FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ticket_events_actor FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 INSERT INTO users (name, email, password, role) VALUES
+('ATMS Super Admin', 'superadmin@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'super_admin'),
 ('ATMS Admin', 'admin@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'admin'),
 ('John Client', 'john.client@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'client'),
 ('Maya Client', 'maya.client@alkmen.com', '$2y$12$lJg9PR/bbVZumMGrPA6SxeKvrifyIFVVD/ivMznIb69vOnDD.EQr2', 'client')
 ON DUPLICATE KEY UPDATE email = VALUES(email);
 
-INSERT INTO tickets (ticket_id, user_id, subject, description, category, priority, status, assigned_to, created_at)
-SELECT 'ALK-1001', u.id, 'Unable to login on mobile', 'Client cannot login from mobile app and gets session timeout.', 'Technical', 'high', 'open', a.id, NOW() - INTERVAL 2 DAY
-FROM users u CROSS JOIN users a
-WHERE u.email = 'john.client@alkmen.com' AND a.email = 'admin@alkmen.com'
-AND NOT EXISTS (SELECT 1 FROM tickets WHERE ticket_id = 'ALK-1001');
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS sla_deadline DATETIME NULL;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS is_overdue TINYINT(1) NOT NULL DEFAULT 0;
 
-INSERT INTO tickets (ticket_id, user_id, subject, description, category, priority, status, assigned_to, created_at)
-SELECT 'ALK-1002', u.id, 'Invoice mismatch for March', 'Invoice amount does not match approved estimate.', 'Billing', 'medium', 'in_progress', a.id, NOW() - INTERVAL 1 DAY
-FROM users u CROSS JOIN users a
-WHERE u.email = 'maya.client@alkmen.com' AND a.email = 'admin@alkmen.com'
-AND NOT EXISTS (SELECT 1 FROM tickets WHERE ticket_id = 'ALK-1002');
-
-INSERT INTO messages (ticket_id, sender_id, message, file, created_at)
-SELECT t.id, u.id, 'I am unable to sign in from my phone since yesterday.', NULL, NOW() - INTERVAL 2 DAY
-FROM tickets t JOIN users u ON u.email = 'john.client@alkmen.com'
-WHERE t.ticket_id = 'ALK-1001'
-AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.ticket_id = t.id AND m.message = 'I am unable to sign in from my phone since yesterday.');
-
-INSERT INTO messages (ticket_id, sender_id, message, file, created_at)
-SELECT t.id, a.id, 'We are checking the mobile auth logs now.', NULL, NOW() - INTERVAL 1 DAY
-FROM tickets t JOIN users a ON a.email = 'admin@alkmen.com'
-WHERE t.ticket_id = 'ALK-1001'
-AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.ticket_id = t.id AND m.message = 'We are checking the mobile auth logs now.');
-INSERT INTO users (name, email, password, role)
-VALUES
-('System Admin', 'admin@atms.local', '$2y$12$b9kl4WosnmJnvr38PMpg/uwLqIxqyR4JRyvaTXi5SG6o5MaKDLsdy', 'admin')
-ON DUPLICATE KEY UPDATE email = VALUES(email);
+ALTER TABLE users MODIFY COLUMN role ENUM('super_admin', 'admin', 'client', 'client_plus', 'client_support') NOT NULL DEFAULT 'client';
