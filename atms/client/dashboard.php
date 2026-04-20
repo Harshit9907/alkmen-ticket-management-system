@@ -51,6 +51,17 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <div class="card stat-card"><h3>Resolved Tickets</h3><p><?= $resolved ?></p></div>
 </div>
 
+<?php if (hasPermission('roles.manage') || hasPermission('users.manage')): ?>
+<div class="card mt-16">
+    <div class="table-header">
+        <h2>Roles Management</h2>
+    </div>
+    <?php if (hasPermission('users.manage')): ?><a class="btn" href="/atms/client/users.php">Manage Users</a><?php endif; ?>
+    <?php if (hasPermission('roles.manage')): ?><a class="btn" href="/atms/client/roles.php">Manage Roles</a><?php endif; ?>
+</div>
+<?php endif; ?>
+
+<div class="card mt-16">
 <div class="card sub-card">
     <div class="table-header">
         <h2>Recent Scoped Tickets</h2>

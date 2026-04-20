@@ -53,6 +53,15 @@ $currentPath = basename($_SERVER['PHP_SELF']);
             <a class="<?= $currentPath === 'dashboard.php' ? 'active' : '' ?>" href="/atms/client/dashboard.php">Dashboard</a>
             <a class="<?= $currentPath === 'raise_ticket.php' ? 'active' : '' ?>" href="/atms/client/raise_ticket.php">Raise Ticket</a>
             <a class="<?= $currentPath === 'my_tickets.php' ? 'active' : '' ?>" href="/atms/client/my_tickets.php">My Tickets</a>
+            <?php if (hasPermission('users.manage')): ?>
+                <a class="<?= $currentPath === 'users.php' || $currentPath === 'create_user.php' ? 'active' : '' ?>" href="/atms/client/users.php">Users</a>
+            <?php endif; ?>
+            <?php if (hasPermission('roles.manage')): ?>
+                <a class="<?= in_array($currentPath, ['roles.php', 'create_role.php', 'edit_role.php'], true) ? 'active' : '' ?>" href="/atms/client/roles.php">Roles Management</a>
+            <?php endif; ?>
+        <?php elseif ($role === 'admin'): ?>
+            <a class="<?= $currentPath === 'dashboard.php' ? 'active' : '' ?>" href="/atms/admin/dashboard.php">Dashboard</a>
+            <a class="<?= $currentPath === 'tickets.php' ? 'active' : '' ?>" href="/atms/admin/tickets.php">Tickets</a>
         <?php elseif (in_array($role, ['admin', 'manager', 'client_admin'], true)): ?>
             <a class="<?= $currentPath === 'dashboard.php' ? 'active' : '' ?>" href="/atms/admin/dashboard.php">Dashboard</a>
             <a class="<?= $currentPath === 'my_tickets.php' ? 'active' : '' ?>" href="/atms/client/my_tickets.php">Scoped Tickets</a>

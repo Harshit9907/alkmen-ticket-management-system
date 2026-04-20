@@ -23,6 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute(['email' => $email]);
         $user = $stmt->fetch();
 
+        if ($user && password_verify($password, $user['password'])) {
+            refreshSessionAuth($pdo, (int) $user['id']);
         if ($user && (int) $user['is_active'] === 1 && password_verify($password, $user['password'])) {
             $_SESSION['user_id'] = (int) $user['id'];
             $_SESSION['company_id'] = $user['company_id'] === null ? null : (int) $user['company_id'];
